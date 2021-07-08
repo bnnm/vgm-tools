@@ -1,0 +1,25 @@
+# PC-FX .LST rip
+
+set OFFSET_ADJUST long 0 #exaxmple: -0x70800
+
+open FDDE ISO 0
+open FDDE LST 1
+
+get LST_SIZE asize 1
+set COUNT long 0
+
+for CURRENT = 0 < LST_SIZE
+  get VALUES line 1
+  savepos CURRENT
+
+  string VALUES s " %d x%x x%x ; " MODE OFFSET SIZE
+  string NAME p= "%03d__%08x.adpcm" COUNT OFFSET
+
+  math OFFSET += OFFSET_ADJUST
+
+  #print "%NAME%: mode=%MODE|h%, offset=%OFFSET|h%, size=%SIZE|h%"
+
+  log NAME OFFSET SIZE 0
+  math COUNT += 1
+
+next

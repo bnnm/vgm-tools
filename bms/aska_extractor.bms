@@ -1,0 +1,374 @@
+# tri-Ace ASKA engine extractor by bnnm
+#
+# extracts files using encrypted table of contents (TOC)
+# info/decryption from triAce-PSE.c by CUE
+#
+# notes
+# - use quickbms_4gb_files.exe
+# - must set GAME value below
+# - PS2 games: must open .iso
+# - Star Ocean 4 (X360): must open soz0.bin, soz1.bin is opened automatically
+# - Star Ocean 4 International (PS3): must join all files into single .bin first
+#   * Windows CMD: copy /B aska0000.bin.66600 + aska0000.bin.66601 + (...) + aska0000.bin.66622 aska0000.bin
+# - Resonance of Fate (PS3/X360): not supported (encryption over TOC+data?)
+# - Star Ocean 4 (PC/PS4): unknown (not tested)
+# - resulting .pack and .slz can be (usually) extracted with: http://www.aluigi.org/papers/bms/slz.bms
+# - resulting .aac can be played with vgmstream (may need to rename to .laac)
+
+###############################################################################
+# GAME CONFIG (see below for values)
+set GAME long 0
+
+# TOC config per game
+# - SEED_KEY: 32b base key, easily found in table 1 since it resets every ~0x100 and many table entries are 0s
+# - TABLE_SIZE: size of a single table
+# - TOC_START: where TOC is found (mainly for PS2/.iso games)
+# - SECTOR_SIZE: how big a single entry is
+# - TOC_TYPE: 0=normal table order (offsets then sizes), 1=inverted order (sizes then offsets), 2=fused tables
+# - BIG_ENDIAN: TOC is big or little endian
+# - TOC_TYPE: decryption mode
+
+
+if GAME == 0
+    print "select GAME number:"
+    print "  1 = Star Ocean 3 JP (PS2) [open .iso]"
+    print "  2 = Star Ocean 3 US/DC (PS2) [open .iso]"
+    print "  3 = Radiata Stories (PS2) [open .iso]"
+    print "  4 = Valkyrie Profile 2 (PS2) [open .iso]"
+    print "  5 = Infinite Undiscovery (X360) [open id1.bin]"
+    print "  6 = Star Ocean 4 (X360) [open soz0.bin]"
+    print "  7 = Star Ocean 4 International (PS3) [open .bin (join all .666xx into .bin)]"
+    print "  8 = Resonance of Fate (PS4/PC) [open .bin]"
+    set GAME unknown "???"
+endif
+
+if   GAME == 1  #Star Ocean 3 JP (PS2)
+    set SEED_KEY    long 0x13578642
+    set TABLE_SIZE  long 0x5000
+    set TOC_START   long 0x200000
+    set SECTOR_SIZE long 0x800
+    set TOC_TYPE    long 0
+    set BIG_ENDIAN  long 0
+    endian little
+
+elif   GAME == 2  #Star Ocean 3 US/DC (PS2)
+    set SEED_KEY    long 0x13578642
+    set TABLE_SIZE  long 0x6000
+    set TOC_START   long 0x200000
+    set SECTOR_SIZE long 0x800
+    set TOC_TYPE    long 0
+    set BIG_ENDIAN  long 0
+    endian little
+
+elif GAME == 3  #Radiata Stories (PS2)
+    set SEED_KEY    long 0x13578642
+    set TABLE_SIZE  long 0x4800
+    set TOC_START   long 0x3C6C1800
+    set SECTOR_SIZE long 0x800
+    set TOC_TYPE    long 0
+    set BIG_ENDIAN  long 0
+    endian little
+
+elif GAME == 4  #Valkyrie Profile 2 (PS2)
+    set SEED_KEY    long 0x49287491
+    set TABLE_SIZE  long 0x3000
+    set TOC_START   long 0x200000
+    set SECTOR_SIZE long 0x800
+    set TOC_TYPE    long 0
+    set BIG_ENDIAN  long 0
+    endian little
+
+elif GAME == 5  #Infinite Undiscovery (X360)
+    set SEED_KEY    long 0x13578642
+    set TABLE_SIZE  long 0x2800
+    set TOC_START   long 0x00
+    set SECTOR_SIZE long 0x800
+    set TOC_TYPE    long 1
+    set BIG_ENDIAN  long 1
+    endian big
+    open FDSE "ud2.bin" 1
+
+elif GAME == 6  #Star Ocean 4 (X360)
+    set SEED_KEY    long 0x13578642
+    set TABLE_SIZE  long 0x5000
+    set TOC_START   long 0x00
+    set SECTOR_SIZE long 0x800
+    set TOC_TYPE    long 1
+    set BIG_ENDIAN  long 1
+    endian big
+    open FDSE "soz1.bin" 1
+
+elif GAME == 7  #Star Ocean 4 International (PS3)
+    set SEED_KEY    long 0x13578642
+    set TABLE_SIZE  long 0x5000
+    set TOC_START   long 0x00
+    set SECTOR_SIZE long 0x10000
+    set TOC_TYPE    long 1
+    set BIG_ENDIAN  long 1
+    endian big
+
+elif GAME == 8  #Resonance of Fate (PS4/PC)
+    set SEED_KEY    long 0x13578642
+    set TABLE_SIZE  long 0x13FFD8
+    set TOC_START   long 0x00
+    set SECTOR_SIZE long 0x800
+    set TOC_TYPE    long 2
+    set BIG_ENDIAN  long 0
+    endian little
+
+else
+    print "must set valid GAME value"
+    exit
+endif
+
+
+# decrypt into MEMORY_FILE9
+callfunction MEM_DECRYPT_INIT 1
+callfunction MEM_DECRYPT 1 SEED_KEY TABLE_SIZE BIG_ENDIAN TOC_START TOC_TYPE
+
+# copy tables for easier handling
+if   TOC_TYPE == 0 || TOC_TYPE == 1
+    xmath OFFSET1 "TABLE_SIZE * 0"
+    xmath OFFSET2 "TABLE_SIZE * 1"
+    xmath OFFSET3 "TABLE_SIZE * 2"
+    log MEMORY_FILE1 OFFSET1 TABLE_SIZE MEMORY_FILE9 #offsets (0) or sizes (1)
+    log MEMORY_FILE2 OFFSET2 TABLE_SIZE MEMORY_FILE9 #sizes (0) or offsets (1)
+    log MEMORY_FILE3 OFFSET3 TABLE_SIZE MEMORY_FILE9 #relative offsets?
+
+elif TOC_TYPE == 2
+    xmath OFFSET1 "TABLE_SIZE * 0"
+    xmath OFFSET2 "TABLE_SIZE * 3"
+    log MEMORY_FILE1 OFFSET1 OFFSET2 MEMORY_FILE9 #sizes + size*sector + offsets
+    log MEMORY_FILE2 OFFSET2 TABLE_SIZE MEMORY_FILE9 #relative offsets?
+
+else
+    exit
+endif
+
+
+xmath FILES "TABLE_SIZE / 4"
+for I = 0 < FILES
+    if   TOC_TYPE == 0
+        get OFFSET long MEMORY_FILE1
+        get SIZE long MEMORY_FILE2
+    elif TOC_TYPE == 1
+        get OFFSET long MEMORY_FILE2
+        get SIZE long MEMORY_FILE1
+    elif TOC_TYPE == 2
+        get SIZE long MEMORY_FILE1
+        get DUMMY long MEMORY_FILE1
+        get OFFSET long MEMORY_FILE1
+    endif
+
+    # ignore first (represents TOC with fixed value 0x14938234 instead of offset)
+    if I == 0
+        #set OFFSET long 0
+        continue
+    endif
+
+    # most entries are empty
+    if SIZE == 0
+        continue
+    endif
+
+    # SO4 X360 divides data into 2 files
+    set SUBFILE long OFFSET
+    math SUBFILE >>= 28 #lower nibble also seen in ROF PC (meaning?)
+    math OFFSET &= 0x00FFFFFF
+
+    # ROF PC, remnant of ROF X360? starts from 0 and points to meaningless offsets
+    if TOC_TYPE == 2 && SUBFILE > 0
+        continue
+    endif
+
+    math OFFSET *= SECTOR_SIZE
+    math SIZE *= SECTOR_SIZE
+
+    string NAME p= "%i%07i." SUBFILE I
+   
+    if   SUBFILE == 0
+        goto OFFSET
+        get HEADER long
+    elif SUBFILE == 1
+        goto OFFSET 1
+        get HEADER long 1
+    else
+        print "unknown subfile"
+        exit
+    endif
+
+    if   HEADER == 0x5041434B || HEADER == 0x4B434150 #PACK
+        string NAME += "pack"
+    elif HEADER == 0x5040434B || HEADER == 0x4B434050 #P@CK
+        string NAME += "pack"
+    elif HEADER == 0x41485350 || HEADER == 0x50534841 #AHSP
+        string NAME += "ahsp"
+    elif HEADER == 0x41414320 || HEADER == 0x20434141 #AAC 
+        string NAME += "aac"
+    elif HEADER == 0x3026B275 || HEADER == 0x75B22630 #wma/wmv ID, ASKA uses the later
+        string NAME += "wmv"
+    elif HEADER == 0x000001BA || HEADER == 0xBA010000 #mpeg sync
+        string NAME += "pss"
+    elif HEADER == 0x77522267 || HEADER == 0x67225277 #xored mpeg sync
+        string NAME += "pssx"
+    elif HEADER == 0x736F336D || HEADER == 0x6D336F73 #libm*
+        string NAME += "mclib"
+    elif HEADER == 0x7F454C46 || HEADER == 0x464C457F #.ELF*
+        string NAME += "elf"
+    elif HEADER == 0x3338635C || HEADER == 0x464C457F  #xored something
+        string NAME += "dat"
+    elif HEADER == 0x1F8B81E2 || HEADER == 0xE2818B1F  #xored something
+        string NAME += "dat"
+    elif HEADER == 0x0AB63F7E || HEADER == 0x7E3FB60A  #xored something
+        string NAME += "dat"
+    elif HEADER == 0x78464573 || HEADER == 0x73454678  #xored something
+        string NAME += "dat"
+    elif HEADER == 0x4E4563F2 || HEADER == 0xF263454E #xored something
+        string NAME += "dat"
+    else
+        if GAME == 1 || GAME == 2 || GAME == 3 || GAME == 4
+            if HEADER == 0
+                string NAME += "grp"
+            else
+                get TEST_04 long
+                get TEST_08 long
+                get TEST_0C long
+                get TEST_10 long
+                get TEST_14 long
+                get TEST_18 long
+                get TEST_1C long
+
+                xmath TEST1A " (TEST_14 % 0x4E000) "
+                xmath TEST1B " (TEST_14 - 0x4E000) "
+                xmath TEST2 " TEST_04 & 0xFFFF "
+
+                if HEADER > 0x0000 && HEADER <= 0x1000 && TEST2 == 0x01 #file count + sector 1
+                    xmath TEST_OFFSET " OFFSET + 0x800 "
+                    goto TEST_OFFSET
+                    get SUBHEADER long
+                    if SUBHEADER == 0x53455157 || SUBHEADER == 0x57514553 #SEQW
+                        string NAME += "seqpack"
+                    endif
+                # header filesize must be multiple of block, and real filesize must be close to that
+                elif HEADER >= 0x20 && HEADER < 0x4E000 && TEST1A == 0 && SIZE >= TEST1B && SIZE <= TEST_14 && TEST_18 <= 1 && TEST_1C == 0
+                    string NAME += "aac"
+                endif
+            endif
+        endif
+    
+    # recognized by quickbms: slz, sle, seq, kod, rcp, fis
+    #todo other extensions?
+    endif
+
+    if   SUBFILE == 0
+        log NAME OFFSET SIZE
+    elif SUBFILE == 1
+        log NAME OFFSET SIZE 1
+    else
+        print "unknown subfile"
+        exit
+    endif
+next I
+
+###
+
+startfunction MEM_DECRYPT_INIT
+    set MEMORY_FILE10 string "
+    unsigned int get_u32be(unsigned char* p) {
+        return (p[0]<<24) | (p[1]<<16) | (p[2]<<8) | (p[3]);
+    }
+    unsigned int get_u32le(unsigned char* p) {
+        return (p[0]) | (p[1]<<8) | (p[2]<<16) | (p[3]<<24);
+    }
+    unsigned int get_u32(unsigned char* p, int big_endian) {
+        return big_endian ? get_u32be(p) : get_u32le(p);
+    }
+
+    void put_u32le(unsigned char* buf, unsigned int v) {
+        buf[0] = (v >> 0)  & 0xFF;
+        buf[1] = (v >> 8)  & 0xFF;
+        buf[2] = (v >> 16) & 0xFF;
+        buf[3] = (v >> 24) & 0xFF;
+    }
+    void put_u32be(unsigned char* buf, unsigned int v) {
+        buf[0] = (v >> 24) & 0xFF;
+        buf[1] = (v >> 16) & 0xFF;
+        buf[2] = (v >> 8)  & 0xFF;
+        buf[3] = (v >> 0)  & 0xFF;
+    }
+    void put_u32(unsigned char* buf, unsigned int v, int big_endian) {
+        big_endian ? put_u32be(buf, v) : put_u32le(buf, v);
+    }
+
+    void decrypt_toc0(unsigned char* buf, unsigned int seed, int table_size, int big_endian) {
+        unsigned int key = seed;
+        unsigned int v;
+        int i;
+
+        for (i = 0; i < table_size; i += 4) {
+            v = get_u32(buf + table_size*0 + i, big_endian);
+            put_u32(buf + table_size*0 + i, v ^ key, big_endian);
+            key ^= (key << 1);
+
+            v = get_u32(buf + table_size*1 + i, big_endian);
+            put_u32(buf + table_size*1 + i, v ^ key, big_endian);
+            key ^= ~seed;
+
+            v = get_u32(buf + table_size*2 + i, big_endian);
+            put_u32(buf + table_size*2 + i, v ^ key, big_endian);
+            key ^= (key << 2) ^ seed;
+        }
+    }
+
+    void decrypt_toc2(unsigned char* buf, unsigned int seed, int table_size, int big_endian) {
+        unsigned int key = seed;
+        unsigned int v;
+        int i, j;
+
+        for (i = 0, j = table_size * 3; i < table_size * 3; i += 4 * 3, j += 4) {
+            v = get_u32(buf + i + 4*0, big_endian);
+            put_u32(buf + i + 4*0, v ^ key, big_endian);
+            key ^= (key << 1);
+
+            v = get_u32(buf + i + 4*1, big_endian);
+            put_u32(buf + i + 4*1, v ^ key, big_endian);
+            key ^= ~seed;
+
+            v = get_u32(buf + i + 4*2, big_endian);
+            put_u32(buf + i + 4*2, v ^ key, big_endian);
+            key ^= (key << 2) ^ seed;
+
+            v = get_u32(buf + j, big_endian);
+            put_u32(buf + j, v ^ key, big_endian);
+            key ^= (key << 1);
+        }
+    }
+    "
+endfunction
+
+startfunction MEM_DECRYPT
+        math SEED_KEY = MEM_DECRYPT_ARG1
+        math TABLE_SIZE = MEM_DECRYPT_ARG2
+        math BIG_ENDIAN = MEM_DECRYPT_ARG3
+        math TOC_START = MEM_DECRYPT_ARG4
+        math TOC_TYPE = MEM_DECRYPT_ARG5
+    #
+
+    if MEM_DECRYPT_ARG5 == 2
+        xmath TOC_SIZE "TABLE_SIZE * 4"
+        log MEMORY_FILE9 TOC_START TOC_SIZE
+
+        # C decryption
+        goto 0 MEMORY_FILE9
+        calldll MEMORY_FILE10 "decrypt_toc2" "tcc" RET MEMORY_FILE9 SEED_KEY TABLE_SIZE BIG_ENDIAN
+    else
+        xmath TOC_SIZE "TABLE_SIZE * 3"
+        log MEMORY_FILE9 TOC_START TOC_SIZE
+
+        # C decryption
+        goto 0 MEMORY_FILE9
+        calldll MEMORY_FILE10 "decrypt_toc0" "tcc" RET MEMORY_FILE9 SEED_KEY TABLE_SIZE BIG_ENDIAN
+    endif
+
+    log "TOC" 0x00 TOC_SIZE MEMORY_FILE9
+endfunction

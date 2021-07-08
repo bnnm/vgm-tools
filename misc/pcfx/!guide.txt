@@ -1,0 +1,22 @@
+PCFX RIPPING
+- PCFX isos are just raw data without standard format.
+  Japanese dev KouFX created fx2wav to rip and decode various PCFX games.
+  We can partially use his tool to get playable files for vgmstream
+- Unzip fx2wav8, and SAMPLE.LZH inside to get TXTs (commands).
+- Use "MAKELST.EXE (game).TXT", this will generate a two files: 
+  - .lst: list with CD offsets (ISO mode, not raw sectors)
+  - .ind: list with decoding commands and file names
+  * Various TXT have a "X" version (ex. LANG.TXT and LANGX.TXT), but simply create .ind with resampling commands
+- Normally you would use an actual CD + CDREAD.EXE (Win98 app) + .lst to rip audio data, but we can use an iso
+- Get .bin iso with separate tracks and mix them
+  * On Windows you can mix them with: "copy /b track1.bin+track2.bin+track3.bin game.bin"
+  * If the iso didn't have separate tracks offsets won't be correct, and must be manually adjusted in the bms
+- Use "bin2iso.exe -f game.bin game.iso" to create a .iso
+- Rename the .iso and the .lst to the same name
+- Use !pcfx_lst.bms on either to rip audio
+  * Set OFFSET_ADJUST here to compensate for missing tracks.
+  * fx2wav rips with the made up ".T01" extension but I use .adpcm instead
+- Use !pcfx_ind.bms on the .ind file to generate a .txth 
+  * change txth to start with a "." as quickbms can't do it
+  * This assumes PC-FX ADPCM but some files may use PCM.
+  * Other files are videos and must be demuxed first

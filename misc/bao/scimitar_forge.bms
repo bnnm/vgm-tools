@@ -1,0 +1,218 @@
+# Ubisoft Montreal - "scimitar" archive(.forge)
+# First used in Assassin`s Creed(PS3, XB0X360, PC).
+# ----------------------------------------------
+# Notes:
+# The files that start with the \x33\xaa\xfb\x57\x99\xfa\x04\x10 or \x10\x04\xfa\x99\x57\xfb\xaa\x33 sign
+# are the ones that hold all the compressed and decompressed data.
+# They usually have two files each(one for listing the hashes and the sizes and the other as an achive in itself).
+# 
+# The compressed files need to be decompressed by using a separate script(scimitar_compressed.bms), which
+# in itself is based around aluigi's original script(assassins_creed2.bms).
+
+### config
+
+set ADD_COMPRESSED_EXTENSION long 1
+
+######################
+
+get FORGE_NAME basename
+
+idstring "scimitar\x00"
+get VER long
+get INFO_OFF long
+get DUMMY3 long
+get DUMMY4 long
+get DUMMY5 long
+get DUMMY6 long
+
+goto INFO_OFF
+
+
+#base header
+get TOTAL_FILES long
+get TOTAL_UNKNOWN long #version?
+get DUMMY9 long #0
+if VER >= 0x1b
+	get DUMMY10 longlong
+else
+	get DUMMY10 long #0
+endif
+get DUMMY11 longlong #-1
+get CHUNK_FILES_MAX long # 5000
+get CHUNK_COUNT long
+get CHUNK_NEXT longlong
+
+set FILE_COUNT long 0
+
+for 
+    goto CHUNK_NEXT long
+
+    get CHUNK_FILES long  #can be 0
+    get CHUNK_UNKNOWN long
+    get CHUNK_START longlong
+    get CHUNK_NEXT longlong
+    get FILE_MIN long # 0/5000/etc
+    get FILE_MAX long # 4999/9999/etc
+    get NAME_OFFSET longlong
+    get DATA_OFFSET longlong
+
+    callfunction WRITE_CHUNK 1
+
+    math FILE_COUNT += CHUNK_FILES
+
+    if CHUNK_NEXT <= 0 #should be -1
+        break
+    endif
+
+    #print "more chunks found"
+next
+
+if FILE_COUNT != TOTAL_FILES
+    print "WARNING! wrong file_count=%FILE_COUNT% vs total_files=%TOTAL_FILES%"
+endif
+
+
+startfunction WRITE_CHUNK
+
+    for i = 0 < CHUNK_FILES
+        if VER >= 0x1b
+            get OFFSET long
+            get DUMMY2 long
+            get NAME_HASH32 long
+            get DUMMY4 long
+            get SIZE long
+            putarray 1 i OFFSET
+            putarray 2 i NAME_HASH32
+            putarray 3 i SIZE
+        else
+            get OFFSET long
+            get ZERO long
+            get NAME_HASH32 long
+            get SIZE long
+            putarray 1 i OFFSET
+            putarray 2 i NAME_HASH32
+            putarray 3 i SIZE
+        endif
+    next i
+
+    goto NAME_OFFSET
+
+    for i = 0 < CHUNK_FILES
+        if VER >= 0x1d
+            set NAME_HASH64 string ""
+            get DUMMY28 long
+            for j = 0 < 8
+                get HASHBYTE byte
+                string HASH2 p "%02x" HASHBYTE
+                string NAME_HASH64 + HASH2
+            next j
+            get DUMMY30 long
+            get DUMMY31 long
+            get DUMMY32 long
+            get DUMMY33 long
+            get DUMMY34 long
+            get DUMMY35 long
+            get DUMMY36 long
+            get DUMMY37 long
+            get DUMMY38 long
+            getdstring DUMMY39 0x110
+            getarray OFFSET 1 i
+            getarray NAME_HASH32 2 i
+            getarray SIZE 3 i
+            putarray 4 i NAME_HASH64
+            if DUMMY28 == SIZE
+                math ALT_SIZE == SIZE
+            endif
+        else
+            get SIZE long
+            get DUMMY29 long
+            get DUMMY30-1 long
+            get DUMMY30-2 long
+            get DUMMY31 longlong
+            get DUMMY32-1 long
+            get DUMMY32-2 long
+            get DUMMY33 long
+            get DUMMY34 long
+            get TYPE long
+            getdstring NAME 0x80
+            if VER >= 0x1b
+                get DUMMY37 longlong
+                get DUMMY38 longlong
+                get DUMMY39 long
+            else
+                get DUMMY37 longlong
+                get DUMMY38 longlong
+            endif
+            getarray OFFSET   1 i
+            getarray NAME_HASH32 2 i
+            getarray ALT_SIZE 3 i
+        endif
+        
+        callfunction CHECK_FILEDATA 1
+    next i
+endfunction
+
+startfunction CHECK_FILEDATA
+	savepos TMP
+	goto OFFSET
+	if VER >= 0x1b && VER <= 0x1c
+		get DUMMY3-01 long
+		if DUMMY6 == 1
+			math ACTUAL_OFFSET == OFFSET
+			math ACTUAL_SIZE == SIZE
+		else
+			math ACTUAL_OFFSET == OFFSET
+			math ACTUAL_OFFSET + 4
+			xmath ACTUAL_SIZE "SIZE - 4"
+		endif
+	elif VER >= 0x1d
+		math ACTUAL_OFFSET == OFFSET
+		math ACTUAL_SIZE == SIZE
+	else
+		idstring "FILEDATA"
+		getdstring FILEDATA_NAME 0x80
+		getdstring ZERO 0xff
+		get ACTUAL_CRC1 long
+		get ACTUAL_SIZE long
+		get ACTUAL_CRC2 longlong
+		get DUMMY2-01 long
+		get DUMMY2-02 long
+		get DUMMY2-03 long
+		get DUMMY2-04 long
+		get DUMMY2-05 long
+		get DUMMY2-06 long
+		get ACTUAL_TYPE long
+		get DUMMY2-08 long
+		get DUMMY2-09 byte
+		if ACTUAL_SIZE == 0
+			math ACTUAL_SIZE == SIZE
+			# todo: validate the "extraction" process when the SIZE value is ultimately 0
+		endif
+		savepos ACTUAL_OFFSET
+	endif
+	if VER >= 0x1d
+		string FILEDATA_NAME p "0x%08x\0x%08x\0x%08x_0x%s" DUMMY37 DUMMY31 NAME_HASH32 NAME_HASH64
+	else
+		set FILEDATA_NAME string NAME
+		if FILEDATA_NAME == ""
+			if VER >= 0x1b
+				string FILEDATA_NAME p "0x%08x\0x%08x" TYPE NAME_HASH32
+			else
+				string FILEDATA_NAME p "0x%08x\0x%08x" ACTUAL_TYPE ACTUAL_CRC1
+			endif
+		endif
+	endif
+
+
+    if ADD_COMPRESSED_EXTENSION != 0
+        goto ACTUAL_OFFSET 
+        get COMPRESSED_ID long
+        if COMPRESSED_ID  == 0x57FBAA33 || COMPRESSED_ID == 0x1004FA99 || COMPRESSED_ID == 0x99FA0410 || COMPRESSED_ID  == 0x57FBAA33
+            string FILEDATA_NAME += ".compressed"
+        endif
+    endif
+
+    log FILEDATA_NAME ACTUAL_OFFSET ACTUAL_SIZE
+
+	goto TMP
+endfunction

@@ -1,0 +1,40 @@
+# Platinum Games .pkz extractor by bnnm
+
+idstring "pkzl"
+get VERSION long
+get SIZE longlong
+
+get FILES long
+get START long
+get NAMES_SIZE longlong
+
+xmath NAME_TABLE "FILES * 0x20 + START"
+savepos CURRENT
+goto NAME_TABLE
+get ALGO string
+goto CURRENT
+
+if ALGO == "ZStandard"
+   comtype "zstd"
+else
+   print "Unknown compression"
+   exit
+endif
+
+
+for I = 0 < FILES
+  #entry 20
+  get NAME_OFFSET longlong
+  get FULLSIZE longlong
+  get OFFSET longlong
+  get SIZE longlong
+
+  math NAME_OFFSET += NAME_TABLE
+  savepos CURRENT
+  goto NAME_OFFSET
+  get NAME string
+  goto CURRENT
+  
+  clog NAME OFFSET SIZE SIZE 
+
+next I

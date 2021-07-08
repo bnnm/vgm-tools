@@ -1,0 +1,89 @@
+# Gran Turismo Sport (PS4) .lib extract + !tags.m3u generator by bnnm
+idstring "BGML"
+goto 0x10
+
+
+#main table
+get FILES long
+get START long
+set ENTRY_SIZE long 0x30
+#unknown subtable
+#get FILES_2 long
+#get START_2 long
+#set ENTRY_SIZE_2 long 0x04
+
+
+#prepare tag file for vgmstream
+log MEMORY_FILE 0 0
+append #on
+  string LINE = "# @ALBUM    Gran Turismo Sport"
+  put LINE line MEMORY_FILE 
+  string LINE = "# @ARTIST   Polyphony Digital"
+  put LINE line MEMORY_FILE 
+  string LINE = "# * tags from .lib file where available "
+  put LINE line MEMORY_FILE 
+  string LINE = ""
+  put LINE line MEMORY_FILE 
+append #off
+
+
+set OFFSET long START
+
+for I = 0 < FILES
+  goto OFFSET
+  
+  get NAME1_OFFSET long #sxd1
+  get UNK_TYPE long #always 0x03
+  get NAME2_OFFSET long #sxd2
+  get DUMMY long
+  get DATA_OFFSET long
+  get NAME3_OFFSET long #title
+  get NAME4_OFFSET long #artist
+  
+  if UNK_TYPE != 0x03
+      print "unknown type at %OFFSET|h%"
+  endif
+
+  goto DATA_OFFSET
+  get DUMMY long #id
+  get DUMMY long #ver
+  get DATA_SIZE long #id
+  
+  goto NAME1_OFFSET
+  get DATA_NAME string
+  string DATA_NAME += ".sxd1"
+
+  log DATA_NAME DATA_OFFSET DATA_SIZE
+
+
+  # add tags  
+  goto NAME2_OFFSET
+  get FILE_NAME string
+  goto NAME3_OFFSET
+  get TITLE_NAME string
+  goto NAME4_OFFSET
+  get ARTIST_NAME string
+  #print "%FILE_NAME%: %TITLE_NAME% - %ARTIST_NAME%"
+
+  append #on
+    if NAME4_OFFSET != 0 && ARTIST_NAME != ""
+      string LINE p= "# %%ARTIST   %s" ARTIST_NAME
+      put LINE line MEMORY_FILE 
+    endif
+  
+    if NAME3_OFFSET != 0 && TITLE_NAME != ""
+      string LINE p= "# %%TITLE    %s" TITLE_NAME
+      put LINE line MEMORY_FILE 
+    endif
+
+    string LINE = FILE_NAME
+    put LINE line MEMORY_FILE 
+  append #off
+
+  math OFFSET += ENTRY_SIZE
+
+next I
+
+
+get TAGS_SIZE asize MEMORY_FILE
+log "!tags.m3u" 0 TAGS_SIZE MEMORY_FILE

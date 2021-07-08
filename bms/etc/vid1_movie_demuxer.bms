@@ -1,0 +1,115 @@
+# Audio extractor for *.vid movies (VID1 identifier)
+#
+# 007: Everything or Nothing (GameCube)
+# Gun (GameCube)
+# Tony Hawk's American Wasteland (GameCube)
+#
+# script for QuickBMS http://quickbms.aluigi.org
+# written by AlphaTwentyThree of Zenhax
+
+log MEMORY_FILE 0 0
+endian big
+idstring "VID1"
+goto 0
+getDstring DATA 0x2c
+putDstring DATA 0x2c MEMORY_FILE
+goto 0x24
+get SIZE long
+math SIZE -= 0x20
+append
+putVarChr MEMORY_FILE 0x24 SIZE long
+append
+get ZERO long
+savepos MYOFF
+idstring "VIDH"
+get VHSIZE long
+goto MYOFF
+getDstring DATA VHSIZE
+savepos MYOFF
+getDstring AUDH 4
+if AUDH != "AUDH"
+   cleanexit
+endif
+get SIZE long
+math SIZE += 0x14
+goto MYOFF
+getDstring DATA SIZE
+putDstring DATA SIZE MEMORY_FILE
+get FSIZE asize
+
+for
+   savepos OFFSET
+   getDstring IDENT 4
+   get SIZE long
+   goto OFFSET
+   if IDENT == "FRAM"
+      getDstring DATA 0x20
+      putDstring DATA 0x20 MEMORY_FILE
+      savepos OFFSET
+      getDstring IDENT 4
+      get SIZE long
+   endif
+   goto OFFSET
+   getDstring DATA SIZE
+   if   IDENT == "AUDD"
+      putDstring DATA SIZE MEMORY_FILE
+   endif
+   savepos OFFSET
+   if OFFSET == FSIZE || IDENT == ""
+      # get SIZE asize MEMORY_FILE
+      # get NAME basename
+      # string NAME += ".raw"
+      # log NAME 0 SIZE MEMORY_FILE
+      callfunction corr_fram 1
+   endif
+next
+
+startfunction corr_fram
+   get MSIZE asize MEMORY_FILE
+   goto 0x20 MEMORY_FILE
+   savepos MYOFF MEMORY_FILE
+   getDstring IDENT 4 MEMORY_FILE
+   get SIZE long MEMORY_FILE
+   goto MYOFF MEMORY_FILE
+   math MYOFF += SIZE
+   goto MYOFF MEMORY_FILE
+   set GO MYOFF
+   for
+      goto GO MEMORY_FILE
+      getDstring IDENT 4 MEMORY_FILE
+      if IDENT != "FRAM"
+         print "no FRAM at %GO%"
+         cleanexit
+      endif
+      savepos WRITE_TO MEMORY_FILE
+      get FRAM_SIZE long MEMORY_FILE
+      xmath GO "WRITE_TO + 0x1c"
+      if GO >= MSIZE
+         xmath SIZE "WRITE_TO - 4"
+         callfunction wrapup 1
+      endif
+      goto GO MEMORY_FILE
+      getDstring IDENT 4 MEMORY_FILE
+      if IDENT == "FRAM" # last two empty FRAMs
+         savepos SIZE MEMORY_FILE
+         math SIZE -= 0x24
+         callfunction wrapup 1
+      endif
+      get AUDD_SIZE long MEMORY_FILE
+      xmath FRAM_SIZE "AUDD_SIZE + 0x20"
+      putVarChr MEMORY_FILE WRITE_TO FRAM_SIZE long
+      savepos MYOFF MEMORY_FILE
+      xmath GO "MYOFF - 0x28 + FRAM_SIZE"
+      if GO >= MSIZE
+         get SIZE asize MEMORY_FILE
+         callfunction wrapup 1
+      endif
+   next
+endfunction
+
+startfunction wrapup
+   get NAME basename
+   string NAME += ".logg"
+   log NAME 0 SIZE MEMORY_FILE
+   cleanexit
+endfunction

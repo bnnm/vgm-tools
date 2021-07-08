@@ -1,0 +1,48 @@
+# LocoRoco series GARC extractor
+#  by bnnm
+# (there are other GARC in a different format)
+
+idstring "GARC"
+get VERSION long
+if VERSION != 0x3f800000 #1.0 float
+    print "Unsupported GARC version"
+    exit
+endif
+
+get DUMMY long  # 0x10?
+get DUMMY long  #null
+get DUMMY long  #null
+get START long  #null
+
+goto START
+
+idstring "FILE"
+get NEXT_OFFSET long
+get SECTION_FILES long
+get SECTION_SIZE long
+get SECTION_START long
+
+goto SECTION_START
+
+for I = 0 < SECTION_FILES 
+    get TYPE long
+    get SIZE long
+    get OFFSET long
+    get NAME_OFFSET long
+    get CRC_THING long
+    get COUNTER_THING long #updated when loaded in PSP memory
+
+    reverselong TYPE
+    
+    savepos CURRENT
+    goto NAME_OFFSET
+    get NAME string
+    goto CURRENT
+
+    log NAME OFFSET SIZE
+
+next I
+
+#there are also NAME, DATA and TERM sections but don't seem needed
+# (FILE section has absolute pointers to those sections)
+

@@ -1,0 +1,61 @@
+# PCFX video demuxer, for "FMT=LAST(packet size),(frame size),(audio data size)
+
+#config
+set CHANNELS long 2
+set SAMPLE_RATE long 31468
+
+set PACKET_SIZE long 0x4400
+set FRAME_SIZE long 0x600
+set AUDIO_SIZE long 0x41c
+
+
+xmath SKIP "PACKET_SIZE - (FRAME_SIZE * CHANNELS)"
+get FILE_SIZE asize
+
+
+log MEMORY_FILE 0 0
+append #on
+for OFFSET = 0 < FILE_SIZE
+    math FRAME_OFFSET = OFFSET
+    math FRAME_OFFSET += SKIP
+
+    log MEMORY_FILE FRAME_OFFSET AUDIO_SIZE
+    if CHANNELS == 2
+      math FRAME_OFFSET += FRAME_SIZE
+      log MEMORY_FILE FRAME_OFFSET AUDIO_SIZE
+    endif    
+
+    math OFFSET += PACKET_SIZE
+next
+append #off
+
+get NAME basename
+string NAME += ".adpcm"
+get ADPCM_SIZE asize MEMORY_FILE
+log NAME 0 ADPCM_SIZE MEMORY_FILE
+
+
+#prepare txth
+log MEMORY_FILE 0 0
+append #on
+  string LINE = "codec = PCFX"
+  put LINE line MEMORY_FILE 
+  string LINE = "codec_mode = 3"
+  put LINE line MEMORY_FILE 
+  if CHANNELS == 2
+    string LINE p= "interleave = 0x%x" AUDIO_SIZE
+    put LINE line MEMORY_FILE 
+  endif
+  string LINE p= "channels = %d" CHANNELS
+  put LINE line MEMORY_FILE 
+  string LINE p= "sample_rate = %d" SAMPLE_RATE
+  put LINE line MEMORY_FILE 
+  string LINE p= "start_offset = 0x%x" START_OFFSET
+  put LINE line MEMORY_FILE 
+  string LINE = "num_samples = data_size" 
+  put LINE line MEMORY_FILE 
+append #off
+
+get TXTH_SIZE asize MEMORY_FILE
+string NAME += ".txth"
+log NAME 0 TXTH_SIZE MEMORY_FILE

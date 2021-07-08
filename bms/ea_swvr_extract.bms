@@ -1,0 +1,134 @@
+# EA SWVR extract (.av/flm/trk/mis/etc) by bnnm
+#  (NASCAR Rumble (PS), Future Cop LAPD (PC/PS), Freekstyle (PS2/GC)
+#
+# Extracts "SWVR" subfiles, that contain sound or other data.
+# Other subfiles are ignored, which may contain minor sfx.
+# Doesn't support all SWRVs.
+
+#config:
+
+# 0=LE (PC, PSX, etc), 1=BE (GC, SAT, MAC, etc)
+set ENDIAN_CONFIG long 0
+
+###
+
+#ids and sizes are LE or BE
+if ENDIAN_CONFIG == 0
+  endian LITTLE
+elif ENDIAN_CONFIG == 1
+  endian BIG  
+endif
+
+get FILE_SIZE asize
+set OFFSET long 0
+
+set FILE_COUNT long 0
+set IS_SWVR long 0
+log MEMORY_FILE 0 0  #reset
+
+
+do
+  goto OFFSET
+
+  get BLOCK_ID long
+  get BLOCK_SIZE long
+
+
+  # needed?
+  if BLOCK_ID == 0 || BLOCK_SIZE == 0
+    math OFFSET += 0x4
+    continue
+  endif
+
+  # FILLs do that up to block, but near end don't actually have size
+  if BLOCK_ID == 0x46494C4C # "FILL"
+      xmath REMAINDER1 "(OFFSET + 0x04) % 0x6000"
+      xmath REMAINDER2 "(OFFSET + 0x04) % 0x10000"
+      if REMAINDER1 == 0 || REMAINDER2 == 0
+        set BLOCK_SIZE long 0x04
+      elif BLOCK_SIZE > 0x100000
+        #just in case for other block sizes
+        set BLOCK_SIZE long 0x04
+      endif
+  endif
+
+  if BLOCK_SIZE > 0x100000
+     print "bad size %BLOCK_SIZE|h% at %OFFSET|h%"
+     exit
+  endif
+
+
+  # output previous swvr if exists
+  if BLOCK_ID == 0x53575652 #"SWVR"
+    #print "found file at %OFFSET|h%"
+    callfunction WRITE_SWVR 1
+    set IS_SWVR long 1
+  endif
+
+
+  # append block if swvr, or only certain chunks if headerless (needed for vids)
+  append #on
+  if IS_SWVR == 1 ###&& BLOCK_ID != 0x46494C4C #FILL could be ignored
+    log MEMORY_FILE OFFSET BLOCK_SIZE
+  elif BLOCK_ID == 0x5641474D || BLOCK_ID == 0x56414742 || BLOCK_ID == 0x44535042 || BLOCK_ID == 0x4453504D  #VAGM/VAGB/DSPM/DSPB
+    log MEMORY_FILE OFFSET BLOCK_SIZE
+  endif
+  append #off
+
+  math OFFSET += BLOCK_SIZE
+
+
+while OFFSET < FILE_SIZE
+
+
+# write last file if needed
+callfunction WRITE_SWVR 1
+
+
+##########################################
+
+startfunction WRITE_SWVR
+  get SIZE asize MEMORY_FILE
+
+  if SIZE != 0 
+
+    # get filename from swvr header, or ignore if headerless
+    goto 0 MEMORY_FILE
+    get SWVRBLOCK_ID long MEMORY_FILE
+    goto 0x10 MEMORY_FILE
+    get FILEBLOCK_ID long MEMORY_FILE
+
+
+    get FILE_NAME basename
+    if SWVRBLOCK_ID == 0x53575652 && FILEBLOCK_ID == 0x46494C45 # SWVR and FILE
+      getdstring INTERNAL_NAME 0x10 MEMORY_FILE
+      string NAME p=  "%s_%04i__%s" FILE_NAME FILE_COUNT INTERNAL_NAME
+    else
+      string NAME p= "%s_%04i.stream" FILE_NAME FILE_COUNT
+    endif
+
+
+    #some filenames are cut
+    if NAME ext "strea"
+      string NAME += "m"
+    elif NAME ext "stre"
+      string NAME += "am"
+    elif NAME ext "str"
+      string NAME += "eam"
+    elif NAME ext "st"
+      string NAME += "ream"
+    elif NAME ext "."
+      string NAME += "stream"
+    elif NAME ext ""
+      string NAME += ".stream"
+    else
+      string NAME += ".stream"
+    endif
+
+    log NAME 0 SIZE MEMORY_FILE
+    log MEMORY_FILE 0 0 #reset
+
+    math FILE_COUNT += 1
+  endif
+
+endfunction

@@ -1,0 +1,33 @@
+# Capcom dlcp extractor by bnnm
+
+endian big
+
+get DUMMY byte
+idstring "CLD"
+
+goto 0x0c
+get FILES long
+
+for I = 1 <= FILES
+    get NAME_SIZE byte
+    getdstring NAME NAME_SIZE
+    get OFFSET long
+
+    if I == FILES
+      get NEXT_OFFSET asize
+      xmath SIZE "NEXT_OFFSET - OFFSET"
+print "1 %I% %NAME%, %OFFSET|h%, %SIZE%"
+    else
+      savepos CURRENT
+      get NEXT_NAME_SIZE byte
+      getdstring NEXT_NAME NEXT_NAME_SIZE
+      get NEXT_OFFSET long
+      goto CURRENT
+      xmath SIZE "NEXT_OFFSET - OFFSET"
+print "2 %I% %NAME%, %OFFSET|h%, %SIZE%"
+    endif
+
+
+    log NAME OFFSET SIZE
+next I
+

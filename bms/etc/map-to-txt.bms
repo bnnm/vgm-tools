@@ -1,0 +1,50 @@
+idstring "PFDx"
+endian big
+get DUMMY byte
+get INTRO_SEG byte
+get SEGMENTS byte
+get REC_SIZE byte
+goto 0x03 0 SEEK_CUR // Zeroes
+get RECS byte
+get BNAME basename
+
+log MEMORY_FILE 0 0
+
+for i = 0 < SEGMENTS
+    get SECTION byte
+    get SEC_RECS byte
+    get DUMMY short
+    xmath SEG "i + 1"
+    string SEG_DEBUG p "Segment %d - Section %d" SEG SECTION
+    put SEG_DEBUG line MEMORY_FILE
+    put "{" line MEMORY_FILE
+    
+    for j = 0 < 8
+        if j >= SEC_RECS
+            goto 0x03 0 SEEK_CUR
+            continue
+        endif
+    
+        get MIN_INT byte
+        get MAX_INT byte
+        get NEXT_SEG byte
+        math NEXT_SEG + 1
+        put 0x09 byte MEMORY_FILE # Tab
+        string SEG_NEXT_DEBUG p "Heat %d-%d -> %d" MIN_INT MAX_INT NEXT_SEG
+        put SEG_NEXT_DEBUG line MEMORY_FILE
+    next j
+    
+    put "}" line MEMORY_FILE
+next i
+
+for i = 0 < RECS
+    goto 0x10 0 SEEK_CUR
+next i
+
+for i = 0 < SEGMENTS
+    get OFFSET long
+next i
+
+string NAME p "%s_MAP.TXT" BNAME
+get SIZE asize MEMORY_FILE
+log NAME 0 SIZE MEMORY_FILE

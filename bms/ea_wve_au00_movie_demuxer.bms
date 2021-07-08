@@ -1,0 +1,30 @@
+# EA WVE (VLC0/au0x) demuxer by bnnm
+
+endian big
+
+get FILESIZE asize
+set OFFSET long 0
+
+append #on
+do 
+  goto OFFSET
+  get BLOCK_ID long
+  get BLOCK_SIZE long
+
+  # accept "VLC0" "au00"
+  if BLOCK_ID == 0x564C4330 || BLOCK_ID == 0x61753030 || BLOCK_ID == 0x61753031
+    log MEMORY_FILE OFFSET BLOCK_SIZE
+  endif
+
+  math OFFSET += BLOCK_SIZE
+
+while OFFSET < FILESIZE
+append #off
+
+
+get NAME basename
+get EXT extension
+string NAME += ".demux."
+string NAME += EXT
+get SIZE asize MEMORY_FILE
+log NAME 0 SIZE MEMORY_FILE

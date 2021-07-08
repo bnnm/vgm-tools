@@ -1,0 +1,7 @@
+- use lzgprs.exe on first_xxxx.arc
+- use loco_garc.bms on first_xxxx.arc.dec
+- get sector.bin from the extraction and put with DATA.BIN
+- use loco_sector.bms on either
+- use lzgprs.exe on resulting GRPS files (like .arc), if needed
+- use loco_garc.bms on resulting .dec files, if needed
+  (some music headers are inside other .arc or .clv)

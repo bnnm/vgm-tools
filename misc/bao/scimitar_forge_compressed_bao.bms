@@ -1,0 +1,362 @@
+# Scimitar BAO extractor
+#
+# by bnnm, modified from aluigi/AnonRunzes's extractor
+# also see http://wiki.tbotr.net/index.php?title=Assassins_Creed:Forge_Files
+
+
+### config ###
+
+# set PC=little, PS3/X360=big
+endian big
+
+# set TARGET_GAME below
+set GAME_AC1     long 1  # Assassin's Creed
+set GAME_POP2008 long 2  # Prince of Persia (2008)
+set GAME_POPTFS  long 3  # Prince of Persia: The Forgotten Sands
+set GAME_SHAUNSK long 4  # Shaun White Skateboarding
+
+set TARGET_GAME long GAME_AC1     
+
+# set to ignore files with less channels that these
+set BAO_CHANNELS_MIN long 2
+
+# extraction settings
+set WRITE_COMPRESSED long 0  #unpack compressed chunks, read from memory otherwise
+set WRITE_FILE_LOG long 1    #writes .log with container paths (to help figuring out usage)
+set WRITE_BAO_ON long 1      #writes BAOs
+
+#write or skip those BAO types
+set WRITE_BAO_CLASS1 long 0 #events
+set WRITE_BAO_CLASS2 long 1 #headers
+set WRITE_BAO_CLASS3 long 1 #memory audio
+set WRITE_BAO_CLASS4 long 1 #package?
+set WRITE_BAO_CLASS5 long 1 #stream audio
+set WRITE_BAO_CLASS6 long 1 #unused?
+set WRITE_BAO_CLASS7 long 0 #info?
+set WRITE_BAO_CLASS8 long 1 #unknown
+set BAO_TYPE_FILTER long 0
+
+####################
+
+set BAO_CLASS_OFFSET long 0x20
+set BAO_TYPE_OFFSET long 0x2C
+
+if TARGET_GAME == GAME_AC1     
+    set BAO_CHANNELS_OFFSET long 0x6C
+
+elif TARGET_GAME == GAME_POP2008 
+    set BAO_CHANNELS_OFFSET long 0x6C
+
+elif TARGET_GAME == GAME_POPTFS  
+    set BAO_CHANNELS_OFFSET long 0x70
+
+elif TARGET_GAME == GAME_SHAUNSK 
+    set BAO_CHANNELS_OFFSET long 0x70
+else 
+    print "missing game version config"
+endif
+
+
+####################
+
+endian save CURRENT_ENDIAN
+if CURRENT_ENDIAN != 0
+    set COMPRESSED_ID binary "\x10\x04\xfa\x99\x57\xfb\xaa\x33"
+else
+    set COMPRESSED_ID binary "\x33\xaa\xfb\x57\x99\xfa\x04\x10"
+endif
+
+log MEMORY_FILE2 0 0
+
+get BASE_NAME basename
+get ARCHIVE_NAME filename
+get ARCHIVE_SIZE asize
+get FOLDER_NAME file_folder
+
+
+set OFFSET long 0
+for PACK = 0
+    if OFFSET u>= ARCHIVE_SIZE
+        break
+    endif
+    
+    findloc COMPRESSED_SIGN binary COMPRESSED_ID ""
+    if COMPRESSED_SIGN == ""
+       print "ERROR: couldn't find compressed id "
+       exit
+    endif
+
+    math COMPRESSED_SIGN + 8
+    goto COMPRESSED_SIGN
+
+    get VERSION short
+    get ZTYPE byte
+    if ZTYPE == 0x01
+        comtype lzo1x
+    elif ZTYPE == 0x02
+        comtype lzo2a
+    elif ZTYPE == 0x03
+        comtype xmemdecompress
+    elif ZTYPE == 0x05
+        comtype lzo1c
+    else
+        print "Error: unknown compression type %ZTYPE%"
+        cleanexit
+    endif
+    get MAX_SIZE short
+    get MAX_ZSIZE short
+    get CHUNKS short
+
+    set AAA1 0
+    set AAA2 0
+    for i = 0 < CHUNKS
+        get SIZE short
+        get ZSIZE short
+        putarray 0 i SIZE
+        putarray 1 i ZSIZE
+        math AAA1 += SIZE
+        math AAA2 += ZSIZE
+        putarray 2 i AAA1
+        putarray 3 i AAA2
+    next i
+
+    math PRE_ALLOCATE = MAX_SIZE
+    math PRE_ALLOCATE *= CHUNKS
+    putvarchr MEMORY_FILE PRE_ALLOCATE 0
+    log MEMORY_FILE 0 0
+    append
+    for i = 0 < CHUNKS
+        getarray SIZE  0 i
+        getarray ZSIZE 1 i
+        get CRC long
+        savepos OFFSET
+        if SIZE == ZSIZE
+            log MEMORY_FILE OFFSET SIZE
+        else
+            clog MEMORY_FILE OFFSET ZSIZE SIZE
+        endif
+        math OFFSET += ZSIZE
+        goto OFFSET
+    next i
+    append
+
+    get PACK_SIZE asize MEMORY_FILE
+
+    if PACK > 1
+        print "WARN: more than 2 packs"
+    endif
+
+    #possibly only needed if PACK > 0
+    callfunction EXTRACT_BAO 1
+
+    if WRITE_COMPRESSED > 0
+       set NAME string ARCHIVE_NAME
+       string NAME += ".p"
+       string NAME += PACK
+       log NAME 0 PACK_SIZE MEMORY_FILE
+    endif
+next PACK
+
+
+if WRITE_FILE_LOG == 1
+    get LOG_SIZE asize MEMORY_FILE2
+    append #on
+    log "_bao.log" 0 LOG_SIZE MEMORY_FILE2
+    append #off
+endif
+
+###################################################
+
+startfunction EXTRACT_BAO
+
+    for PACK_OFFSET = 0 < PACK_SIZE
+        goto PACK_OFFSET MEMORY_FILE
+
+        findloc TEST_OFFSET string "BAO_0" MEMORY_FILE "" PACK_SIZE
+        if TEST_OFFSET == ""
+            break
+        endif
+
+        math PACK_OFFSET = TEST_OFFSET 
+        math PACK_OFFSET -= 0x0c
+        goto PACK_OFFSET MEMORY_FILE 
+
+        get SUB_ID long MEMORY_FILE
+        get SUB_SIZE long MEMORY_FILE
+        get SUB_NAME_SIZE long MEMORY_FILE
+        getdstring SUB_NAME SUB_NAME_SIZE MEMORY_FILE
+        get MOD byte MEMORY_FILE
+#       #extra variable-sized fields
+#       if MOD > 0
+#           print "found MOD at %FILE_OFFSET|h%"
+#           exit
+#       endif
+
+        savepos PACK_OFFSET MEMORY_FILE
+        math PACK_OFFSET += SUB_SIZE 
+
+
+        math SAVE_BAO = 0
+        # some SUB_ID mean BAO but just try to find "BAO_0(...)"
+
+        string TEST = SUB_NAME
+        string TEST - -6
+        if TEST == "BAO_0x"
+            math SAVE_BAO = 1
+        endif
+
+        if SAVE_BAO == 1
+            callfunction WRITE_BAO 1
+        endif
+    next
+
+endfunction
+
+
+startfunction WRITE_BAO
+#  string BAO_NAME  = "bao/"
+#  string BAO_NAME += BASE_NAME
+#  string BAO_NAME += "/"
+#  string BAO_NAME += SUB_NAME
+#  string BAO_NAME += ".bao"
+
+    get MEMORY_SIZE asize MEMORY_FILE
+    string BAO_NAME = SUB_NAME
+
+    savepos BAO_CURRENT MEMORY_FILE
+
+    callfunction FIND_BAO 1
+
+    if BAO_OFFSET != ""
+        math BAO_OFFSET -= 0x04
+        goto BAO_OFFSET MEMORY_FILE
+        get BAO_SIZE long MEMORY_FILE
+        math BAO_OFFSET += 0x04
+
+        # get class and type
+        xmath READ_OFFSET " BAO_OFFSET + BAO_CLASS_OFFSET "
+        goto READ_OFFSET MEMORY_FILE
+        get BAO_CLASS long MEMORY_FILE
+
+        xmath READ_OFFSET " BAO_OFFSET + BAO_TYPE_OFFSET "
+        goto READ_OFFSET MEMORY_FILE
+        get BAO_TYPE long MEMORY_FILE
+
+        math SAVE_BAO = 0
+
+
+        xmath MEMORY_LEFT " MEMORY_SIZE - BAO_CURRENT "
+        if BAO_SIZE > MEMORY_LEFT
+            print "bad size %BAO_SIZE|h% vs %MEMORY_LEFT|h% at %BAO_CURRENT|h% in %ARCHIVE_NAME%/%SUB_NAME%"
+            exit
+        endif
+
+        if   BAO_CLASS == 0x10000000 && WRITE_BAO_CLASS1 == 1
+            math SAVE_BAO = 1
+
+        elif BAO_CLASS == 0x20000000 && WRITE_BAO_CLASS2 == 1
+
+            if BAO_TYPE_FILTER > 0
+                if BAO_TYPE == BAO_TYPE_FILTER
+                    math SAVE_BAO = 1
+                endif
+
+            elif BAO_TYPE == 0x01 
+                xmath READ_OFFSET " BAO_OFFSET + BAO_CHANNELS_OFFSET "
+                goto READ_OFFSET MEMORY_FILE
+                get BAO_CHANNELS long MEMORY_FILE
+
+                if BAO_CHANNELS >= BAO_CHANNELS_MIN
+                    math SAVE_BAO = 1
+                endif
+               
+            elif BAO_TYPE == 0x05 || BAO_TYPE == 0x06 || BAO_TYPE == 0x08
+                #print "found %BAO_NAME% type %BAO_TYPE%"
+                math SAVE_BAO = 1
+            else
+#               if BAO_TYPE != 0x04 && BAO_TYPE != 0x02
+#                   print "ignored BAO type %BAO_TYPE|h%"
+#               endif
+            endif
+
+        elif BAO_CLASS == 0x30000000 && WRITE_BAO_CLASS3 == 1
+            math SAVE_BAO = 1
+
+        elif BAO_CLASS == 0x40000000 && WRITE_BAO_CLASS4 == 1
+            math SAVE_BAO = 1
+            print "found uncommon BAO class %BAO_CLASS|h% in %BAO_NAME%"
+
+        elif BAO_CLASS == 0x50000000 && WRITE_BAO_CLASS5 == 1
+            math SAVE_BAO = 1
+
+        elif BAO_CLASS == 0x60000000 && WRITE_BAO_CLASS6 == 1
+            math SAVE_BAO = 1
+            print "found uncommon BAO class %BAO_CLASS|h% in %BAO_NAME%"
+
+        elif BAO_CLASS == 0x70000000 && WRITE_BAO_CLASS7 == 1
+            math SAVE_BAO = 1
+            print "found uncommon BAO class %BAO_CLASS|h% in %BAO_NAME%"
+
+        elif BAO_CLASS == 0x80000000 && WRITE_BAO_CLASS8 == 1
+            math SAVE_BAO = 1
+            print "found uncommon BAO class %BAO_CLASS|h% in %BAO_NAME%"
+
+        #else
+        #    print "ignored BAO class %BAO_CLASS|h% in %BAO_NAME%"
+
+        endif
+
+        if SAVE_BAO == 1
+            if WRITE_FILE_LOG == 1
+                append #on
+                string LINE p= "%s\%s\%s" FOLDER_NAME BASE_NAME SUB_NAME
+                put LINE line MEMORY_FILE2
+                append #off
+            endif
+            if WRITE_BAO_ON == 1
+                log BAO_NAME BAO_OFFSET BAO_SIZE MEMORY_FILE
+            endif
+        endif
+
+    else
+        print "didn't find expected BAO version in in %ARCHIVE_NAME%/%SUB_NAME%"
+        #exit #not a BAO?
+    endif
+
+endfunction
+
+startfunction FIND_BAO
+
+    xmath FIND_OFFSET " TEST_OFFSET - 0x08 "
+    goto FIND_OFFSET MEMORY_FILE
+    get BAO_BASE_SIZE long MEMORY_FILE
+    get BAO_NAME_SIZE long MEMORY_FILE
+
+    xmath FIND_MAX_OFFSET " TEST_OFFSET + BAO_BASE_SIZE + BAO_NAME_SIZE "
+    if FIND_MAX_OFFSET > MEMORY_SIZE 
+        print "bad size at %FIND_OFFSET|h% in %ARCHIVE_NAME%/%SUB_NAME%"
+        #exit #not a BAO?
+    endif
+
+    
+    # findloc per version since it's buggy when using binary VARs
+    # (may truncate up to \x00, but not always...?)
+
+    if TARGET_GAME == GAME_AC1     
+        findloc BAO_OFFSET binary "\x01\x1B\x01\x00" MEMORY_FILE "" FIND_MAX_OFFSET 
+
+    elif TARGET_GAME == GAME_POP2008 
+        findloc BAO_OFFSET binary "\x02\x1F\x00\x10" MEMORY_FILE "" FIND_MAX_OFFSET 
+
+    elif TARGET_GAME == GAME_POPTFS  
+        findloc BAO_OFFSET binary "\x02\x25\x01\x0A" MEMORY_FILE "" FIND_MAX_OFFSET 
+
+    elif TARGET_GAME == GAME_SHAUNSK 
+        findloc BAO_OFFSET binary "\x02\x25\x01\x1D" MEMORY_FILE "" FIND_MAX_OFFSET 
+
+    else 
+        print "missing game version config"
+        exit
+    endif
+
+endfunction

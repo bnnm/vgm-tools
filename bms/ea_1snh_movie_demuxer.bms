@@ -1,0 +1,49 @@
+# EA 1SNh movie demuxer by bnnm
+# for movies that include 1SNh or SEAD (.tgv/etc)
+
+######################
+
+get FILE_SIZE asize
+set OFFSET long 0
+
+append #on
+do 
+    goto OFFSET
+
+    endian big
+    get BLOCK_ID long
+
+    #todo: guess_endianness32bit for early Saturn/Mac movies
+    # for now change next line to "endian big" for those
+    endian little
+    get BLOCK_SIZE long
+
+    # accept standard 1SNh
+    if BLOCK_ID == 0x31534E68 || BLOCK_ID == 0x31534E64 || BLOCK_ID == 0x31534E6C || BLOCK_ID == 0x31534E65  #"1SNh/1SNd/1SNl/1SNe"
+        log MEMORY_FILE OFFSET BLOCK_SIZE
+    endif
+    
+    # accept movie values
+    if BLOCK_ID == 0x53454144 || BLOCK_ID == 0x534E4443 || BLOCK_ID == 0x53454E44  #"SEAD/SNDC/SEND"
+        log MEMORY_FILE OFFSET BLOCK_SIZE
+    endif
+
+    math OFFSET += BLOCK_SIZE
+
+while OFFSET < FILE_SIZE
+append #off
+
+
+get NAME basename
+get EXT extension
+string NAME += "." 
+string NAME += EXT
+string NAME += ".audio.sng"
+get SIZE asize MEMORY_FILE
+
+if SIZE == 0
+  print "File doesn't contain audio"
+  cleanexit
+endif
+
+log NAME 0 SIZE MEMORY_FILE

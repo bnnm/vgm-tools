@@ -1,0 +1,41 @@
+# FSB5 extractor by bnnm
+#
+# DON'T USE FOR UNITY games (try Unity Asset Studio and such)
+
+get BASE_NAME basename
+set I long 0
+
+for
+    findloc OFFSET string "FSB5" 0 ""
+    if OFFSET == ""
+        #print "FSB5 not found"
+        exit
+    endif
+    goto OFFSET
+
+    get ID long
+    get VERSION long
+    get SUBSONGS long
+    get SAMPLE_HEADER_SIZE long
+    
+    get NAME_TABLE_SIZE long
+    get SAMPLE_DATA_SIZE long
+
+    if VERSION == 0
+        set BASE_HEADER_SIZE long 0x40
+    elif VERSION == 1
+        set BASE_HEADER_SIZE long 0x3c
+    else
+        print "Unknown FSB5 version"
+        exit
+    endif
+
+    xmath SIZE "SAMPLE_HEADER_SIZE + NAME_TABLE_SIZE + SAMPLE_DATA_SIZE + BASE_HEADER_SIZE "
+    
+    string NAME p= "%s__%03i.fsb" BASE_NAME I
+    log NAME OFFSET SIZE
+
+    math OFFSET += SIZE
+    goto OFFSET
+    math I += 1;
+next

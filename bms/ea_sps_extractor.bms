@@ -1,0 +1,79 @@
+# EA SPS raw extractor by bnnm
+#
+# FOR TESTING PURPOSES ONLY! use proper tools to extract .sps
+#
+# set OFFSET to first SPS in case of false positives
+# assumes 32b-aligned SPS, which is true for all known banks
+
+######################
+
+set OFFSET long 0
+get FILE_SIZE asize
+get BASE_NAME basename
+
+
+endian big
+set I long 0
+set IS_SPS long 0
+set OUTPUT_SPS long 0
+
+log MEMORY_FILE 0 0
+append #on
+
+do
+    goto OFFSET
+    get BLOCK_HEADER long
+    xmath BLOCK_FLAG " BLOCK_HEADER >> 24 "
+    xmath BLOCK_SIZE " BLOCK_HEADER & 0x00FFFFFF "
+
+    if IS_SPS == 0
+        # new SPS candidate #todo could improve detection
+        if BLOCK_FLAG == 0x48 && BLOCK_SIZE < 0x00FF
+            set IS_SPS long 1
+            set OUTPUT_SPS long 0
+        else
+            # move to next 32b
+            set BLOCK_FLAG long 0x00
+            set BLOCK_SIZE long 0x04
+        endif
+
+    else
+        if BLOCK_FLAG != 0x48 && BLOCK_FLAG != 0x44 && BLOCK_FLAG != 0x45
+            set IS_SPS long 0
+            set OUTPUT_SPS long 1
+            # move to next 32b
+            set BLOCK_FLAG long 0x00
+            set BLOCK_SIZE long 0x04
+        endif
+    endif
+    
+
+    if IS_SPS == 1 && OUTPUT_SPS == 0
+        log MEMORY_FILE OFFSET BLOCK_SIZE
+    endif
+
+    if BLOCK_FLAG == 0x45 # end flag
+        set OUTPUT_SPS long 1
+    endif
+
+    math OFFSET += BLOCK_SIZE
+    if OFFSET >= FILE_SIZE && IS_SPS == 1 #file end
+        set OUTPUT_SPS long 1
+    endif
+
+    if OUTPUT_SPS == 1
+        append #off
+
+        string NAME p= "%s__%04i.sps" BASE_NAME I
+        get SIZE asize MEMORY_FILE
+        log NAME 0 SIZE MEMORY_FILE
+
+        log MEMORY_FILE 0 0
+        
+        set IS_SPS long 0
+        set OUTPUT_SPS long 0
+        math I += 1
+        
+        append #on
+    endif
+while OFFSET < FILE_SIZE

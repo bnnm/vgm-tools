@@ -1,0 +1,53 @@
+# Saturn CAK audio extractor by bnnm
+# (only tested with FILM containing ADX)
+
+endian big
+
+idstring "FILM"
+get DUMMY long
+get DUMMY long
+get DUMMY long
+
+idstring "FDSC"
+get CHUNK_SIZE long
+math CHUNK_SIZE -= 0x08
+getdstring DUMMY CHUNK_SIZE
+
+idstring "STAB"
+get CHUNK_SIZE long
+get DUMMY long
+get ENTRIES long
+
+savepos BASE_OFFSET
+math BASE_OFFSET += CHUNK_SIZE
+
+
+log MEMORY_FILE 0 0
+append
+for I = 0 < ENTRIES
+   get ENTRY_OFFSET long
+   get ENTRY_SIZE long
+   get ENTRY_INFO1 long
+   get ENTRY_INFO2 long
+
+   if ENTRY_INFO1 != 0xFFFFFFFF
+      continue
+   endif
+   if ENTRY_INFO2 != 1
+      print "unknown entry found"
+      exit
+   endif
+
+   math ENTRY_OFFSET += BASE_OFFSET
+
+   log MEMORY_FILE ENTRY_OFFSET  ENTRY_SIZE 
+
+next I
+append
+
+
+get BASE_NAME filename #basename
+string NAME p= "%s.adx" BASE_NAME
+
+get SIZE asize MEMORY_FILE
+log NAME 0 SIZE MEMORY_FILE

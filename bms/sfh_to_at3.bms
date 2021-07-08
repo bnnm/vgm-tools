@@ -1,0 +1,58 @@
+# SFH AT3 to AT3 from Capcom games by bnnm
+#
+# kinda useless now since vgmstream can play .sfh directly
+
+
+endian big 
+
+idstring "\x00\x53\x46\x48"
+get MODE long
+get DATA_SIZE long  #clean data size (needed for end padding)
+get DUMMY long  #null
+
+if MODE == 0x00010000
+    #Devil May Cry 4 Demo (PS3)
+    set BLOCK_SIZE long 0x10010
+    set SKIP_SIZE 0x10
+elif MODE == 0x00010001
+    #Jojo's Bizarre Adventure HD (PS3)
+    set BLOCK_SIZE long 0x20000
+    set SKIP_SIZE 0x10
+else
+   print "unknown mode"
+   exit
+endif
+
+
+get FILESIZE asize
+math FILESIZE -= 0x10 #last part (or more) is garbage
+
+log MEMORY_FILE 0 0
+
+xmath BLOCK_SIZE_MAX "BLOCK_SIZE - SKIP_SIZE"
+set OFFSET 0
+
+append #on
+do
+    #skips garbage on every block
+    math OFFSET += SKIP_SIZE
+
+    xmath MAX_COPY " FILESIZE - OFFSET "
+
+    if MAX_COPY > BLOCK_SIZE_MAX
+       set MAX_COPY BLOCK_SIZE_MAX
+    endif
+
+    log MEMORY_FILE1 OFFSET MAX_COPY
+
+    math OFFSET += MAX_COPY
+
+while OFFSET < FILESIZE
+append #off
+
+
+get NAME basename
+string NAME += ".clean.at3"
+
+log NAME 0 DATA_SIZE MEMORY_FILE1
+

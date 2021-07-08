@@ -1,0 +1,61 @@
+# UE4 standard asset extractor
+# v1 by bnnm
+# DON'T USE, try umodel instead (left for reference)
+
+######################
+
+get FILE_SIZE asize
+
+
+# check files
+open FDDE UBULK 1 EXISTS_UBULK
+open FDDE UEXP 2 EXISTS_UEXP
+
+if EXISTS_UBULK == 1
+    print "UBULK found, use chunked extractor"
+    cleanexit
+endif
+
+if EXISTS_UEXP == 1 && FILE_SIZE < 0x1000
+    print "UEXP found, try to extract from it instead"
+    cleanexit
+endif
+
+
+# check UE4 footer
+xmath LAST_OFFSET " FILE_SIZE - 0x04 "
+goto LAST_OFFSET 
+endian big
+get EXPECTED_ID long
+if EXPECTED_ID != 0xC1832A9E
+    print "expected UE4 id not found"
+    cleanexit
+endif
+
+
+# extract known assets
+goto 0
+string SEARCH_STRING = "UE4OPUS"
+string SEARCH_EXT = ".ue4opus"  #.opus/.lopus is also ok
+callfunction EXTRACT_STRING 1
+
+goto 0
+string SEARCH_STRING = "OggS"
+string SEARCH_EXT = ".ogg"
+callfunction EXTRACT_STRING 1
+
+cleanexit
+
+###
+
+startfunction EXTRACT_STRING
+    findloc OFFSET string SEARCH_STRING 0 ""
+    if OFFSET != ""
+        get NAME basename
+        string NAME += SEARCH_EXT
+        xmath SIZE " FILE_SIZE - OFFSET - 0x04 "
+
+        log NAME OFFSET SIZE
+    endif
+
+endfunction

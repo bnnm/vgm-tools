@@ -1,0 +1,34 @@
+# LocoRoco sector.bin + DATA.BIN extractor
+#  by bnnm
+#
+# sector.bin must be decompressed + extracted from first.arc
+
+open FDSE "sector.bin" 0
+open FDSE "DATA.BIN" 1
+
+idstring "GIMG"
+get VERSION long
+if VERSION != 0x3f800000 #1.0 float
+    print "Unsupported GIMG version"
+    exit
+endif
+
+get FILES long
+
+for I = 0 < FILES
+    get NAME_OFFSET long
+    get OFFSET long #in sectors
+    get CRC_THING long
+    get SIZE long
+
+    math OFFSET *= 0x800
+
+    savepos CURRENT
+    goto NAME_OFFSET
+    get NAME string
+    goto CURRENT
+
+     
+
+    log NAME OFFSET SIZE 1
+next I

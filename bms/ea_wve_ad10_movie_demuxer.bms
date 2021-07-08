@@ -1,0 +1,31 @@
+# EA WVE (ad10) demuxer by bnnm
+# from Wing Commande 3/4 (PS)
+
+endian big
+
+get FILESIZE asize
+set OFFSET long 0
+
+append #on
+do 
+  goto OFFSET
+  get BLOCK_ID long
+  get BLOCK_SIZE long
+
+  # accept "ad10" "ad11"
+  if BLOCK_ID == 0x41643130 || BLOCK_ID == 0x41643131
+    log MEMORY_FILE OFFSET BLOCK_SIZE
+  endif
+
+  math OFFSET += BLOCK_SIZE
+
+while OFFSET < FILESIZE
+append #off
+
+
+get NAME basename
+get EXT extension
+string NAME += ".demux."
+string NAME += EXT
+get SIZE asize MEMORY_FILE
+log NAME 0 SIZE MEMORY_FILE

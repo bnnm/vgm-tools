@@ -1,0 +1,109 @@
+# SIFF demuxer (.vb, .vbc) by bnnm
+
+get ID long
+reverselong ID
+
+if ID != 0x53494646  #SIFF
+    print "Unknown format"
+    exit
+endif
+
+get DUMMY long
+get ID2 long
+get HEADER_ID long
+
+if ID2 != 0x56425631 && ID2 != 0x31564256 && HEADER_ID != 0x56424844 && HEADER_ID != 0x44484256 #VBV1/VBHD
+    print "Unknown format"
+    exit
+endif
+
+
+get FILE_SIZE asize
+get HEADER_SIZE long
+reverselong HEADER_SIZE
+math HEADER_SIZE += 0x14
+math HEADER_SIZE += 0x08
+
+set AUDIO_FRAMES long 0
+
+log MEMORY_FILE 0 0
+
+append
+log MEMORY_FILE 0 HEADER_SIZE
+
+for OFFSET = HEADER_SIZE < FILE_SIZE
+    goto OFFSET
+
+    get SIZE long
+    get FLAGS short
+   
+
+    xmath HAS_GMV      " FLAGS & 0x01 "
+    xmath HAS_UNKNOWN  " FLAGS & 0x02 " #unused?
+    xmath HAS_AUDIO    " FLAGS & 0x04 "
+    #xmath HAS_VIDEO   " FLAGS & 0x08 "
+    #xmath HAS_PALETTE " FLAGS & 0x10 "
+    #xmath HAS_LENGTH  " FLAGS & 0x20 "
+    #xmath HAS_UNKNOWN " FLAGS & 0x40 "
+    #xmath HAS_UNKNOWN " FLAGS & 0x80 "
+
+    if HAS_UNKNOWN != 0
+        print "Found unknown flag at %OFFSET|h%"
+        exit
+    endif
+
+    # ignore non audio chunks
+    if HAS_AUDIO == 0
+        math OFFSET += SIZE
+        continue
+    endif
+
+    #order of sub-chunks seems as listed in flags (GMV > audio > video > etc)
+
+    savepos AUDIO_OFFSET
+
+    if HAS_GMV != 0
+        math AUDIO_OFFSET += 0x04
+        goto AUDIO_OFFSET
+    endif
+
+    get AUDIO_SIZE long
+
+    set NEW_FLAGS long 0x04 #audio only
+    xmath NEW_SIZE " 0x06 + AUDIO_SIZE "
+
+    put NEW_SIZE long MEMORY_FILE
+    put NEW_FLAGS short MEMORY_FILE
+    log MEMORY_FILE AUDIO_OFFSET AUDIO_SIZE
+
+    math OFFSET += SIZE
+    math AUDIO_FRAMES += 1
+next
+append
+
+if AUDIO_FRAMES == 0
+    print "File has no audio"
+    exit
+endif
+
+get FILE_SIZE asize MEMORY_FILE
+xmath RIFF_SIZE " FILE_SIZE - 0x08 "
+xmath BODY_SIZE " FILE_SIZE - 0x3c "
+
+# fix sizes (BE somehow)
+endian big
+putvarchr MEMORY_FILE 0x04 RIFF_SIZE long
+putvarchr MEMORY_FILE 0x38 BODY_SIZE long
+endian little
+
+# fix header
+putvarchr MEMORY_FILE 0x16 0 long #width/height
+putvarchr MEMORY_FILE 0x1e AUDIO_FRAMES short 
+
+
+get EXTENSION extension
+get BASE_NAME basename
+get FILE_SIZE asize MEMORY_FILE
+string NAME p= "%s.audio.%s" BASE_NAME EXTENSION
+
+log NAME 0 FILE_SIZE MEMORY_FILE

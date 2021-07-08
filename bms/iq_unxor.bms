@@ -1,0 +1,13 @@
+# IQ Remix+ (PS2) unxor
+
+get NAME basename
+get SIZE asize
+
+string NAME += ".dec.PCM"
+
+endian big
+get XOR_KEY long
+
+
+filexor XOR_KEY
+log NAME 0 SIZE

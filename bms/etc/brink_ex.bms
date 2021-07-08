@@ -1,0 +1,267 @@
+# Brink sdpk2 PSAR (script 0.3.4)
+# script for QuickBMS http://quickbms.aluigi.org
+
+# http://svn.gib.me/public/brink
+# https://github.com/komiga/brinktools
+#
+# mod by bnnm
+#
+# handled unordered names that were used in some kingdom hearts game,
+# maybe original script works better now
+
+
+quickbmsver "0.8.0"
+endian big
+idstring "PSAR"
+get MajorVersion short
+get MinorVersion short
+getdstring CompressionFormat 4
+get headerSize long
+get entrySize long
+get entryCount long
+get DataBlockSize long
+get Flags long  # was CompressedBlockValueSize
+
+savepos TMP
+math headerSize - TMP
+savepos INFO_OFF
+xmath EXTRA_OFF "INFO_OFF + (entryCount * entrySize)"
+xmath EXTRA_Limit "EXTRA_OFF + (headerSize - (entryCount * entrySize))"
+goto EXTRA_OFF
+
+math CompressedBlockValueSize = 0
+math i = 1
+do
+    math CompressedBlockValueSize + 1
+    math i << 8
+while i < DataBlockSize
+
+math i = 0
+for EXTRA_OFF = EXTRA_OFF < EXTRA_Limit
+    if CompressedBlockValueSize == 1
+        get ZSIZE byte
+    elif CompressedBlockValueSize == 2
+        get ZSIZE short
+    elif CompressedBlockValueSize == 3
+        get ZSIZE threebyte
+    elif CompressedBlockValueSize == 4
+        get ZSIZE long
+    elif CompressedBlockValueSize == 8
+        get ZSIZE longlong
+    else
+        get ZSIZE long  # ???
+    endif
+    savepos EXTRA_OFF
+    putarray 0 i ZSIZE
+next i
+goto EXTRA_Limit
+
+for i = 0 < entryCount
+    goto INFO_OFF
+
+    #getdstring HASH 16 #not ok?
+    get HASH1 long
+    get HASH2 long
+    get HASH3 long
+    get HASH4 long
+    string HASH p= "%08X%08X%08X%08X" HASH1 HASH2 HASH3 HASH4
+    #print "HASH=%HASH%"
+    
+    get CompressedBlockSizeIndex long
+
+    get TMP byte
+    get UncompressedSize long
+    math TMP << 32
+    math UncompressedSize | TMP
+
+    get TMP byte
+    get Offset long
+    math TMP << 32
+    math Offset | TMP
+
+    math INFO_OFF + entrySize
+
+    # here due to DUMP_ZARC
+    if CompressionFormat == "lzx "
+        comtype xmemdecompress
+    elif CompressionFormat == "lzma"
+        comtype lzma86head
+    elif CompressionFormat == "zlib"
+        comtype zlib
+    endif
+
+    if i == 0
+        callfunction READ_FILE_TOC 1
+        callfunction LOAD_FILENAMES 1
+    else
+        callfunction FIND_FILENAME 1
+        callfunction DUMP_FILE 1
+        callfunction DUMP_ZARC 1
+    endif
+
+next i
+
+startfunction READ_FILE_TOC
+    putvarchr MEMORY_FILE UncompressedSize 0
+    log MEMORY_FILE 0 0
+    append
+    for SIZE = 0 < UncompressedSize
+        getarray ZSIZE 0 CompressedBlockSizeIndex
+        if ZSIZE == 0
+            math ZSIZE = DataBlockSize
+        endif
+        xmath REMAINING "UncompressedSize - SIZE"
+        if zsize == DataBlockSize || zsize == REMAINING
+            log MEMORY_FILE Offset zsize
+            math SIZE += zsize
+        else
+            clog MEMORY_FILE Offset zsize DataBlockSize
+            math SIZE += DataBlockSize
+        endif
+        math Offset + zsize
+    next CompressedBlockSizeIndex
+    append
+
+endfunction
+
+startfunction DUMP_FILE
+    #putvarchr MEMORY_FILE UncompressedSize 0
+    #log MEMORY_FILE 0 0
+    append
+    for SIZE = 0 < UncompressedSize
+        getarray ZSIZE 0 CompressedBlockSizeIndex
+        if ZSIZE == 0
+            math ZSIZE = DataBlockSize
+        endif
+        xmath REMAINING "UncompressedSize - SIZE"
+        if zsize == DataBlockSize || zsize == REMAINING
+            log NAME Offset zsize
+            math SIZE += zsize
+        else
+            clog NAME Offset zsize DataBlockSize
+            math SIZE += DataBlockSize
+        endif
+        math Offset + zsize
+    next CompressedBlockSizeIndex
+    append
+endfunction
+
+
+startfunction LOAD_FILENAMES
+    math LINE_FEEDS = 0
+    for x = 0 < UncompressedSize
+        getvarchr TMP MEMORY_FILE x
+        if TMP == '\n' || TMP == 0
+            math LINE_FEEDS + 1
+        endif
+    next x
+    math LINE_FEEDS + 2
+    putarray 10 entryCount ""
+    putarray 9 entryCount ""
+    if LINE_FEEDS >= entryCount # it was == in the past and is still correct... let's stay openminded :)
+        math LINE_FEEDS - 1
+        goto 0 MEMORY_FILE
+        for x = 1 <= LINE_FEEDS
+            get NAME line MEMORY_FILE
+            putarray 10 x NAME
+
+            # 0x01: ignore case, 0x02: absolute paths, 0x4/0x8: ? (always set in latest pasarc)
+            math IGNORE_FLAG = FLAGS
+            math IGNORE_FLAG &= 1
+            if IGNORE_FLAG == 1
+              string UNAME u= NAME
+            endif
+
+            set NSIZE strlen NAME
+
+            encryption md5 UNAME "" 0 NSIZE
+            set NHASH QUICKBMS_HEXHASH
+            #print "NAME=%NAME%, NHASH=%NHASH|h%"
+
+            putarray 9 x NHASH
+        next x
+    endif
+endfunction
+
+startfunction FIND_FILENAME
+    #old files, when entries are ordered like filenames
+    #getarray NAME 10 i
+
+    #getarray NHASH2 9 0
+    #print "NHASH2=%NHASH2|h%"
+    #getarray NHASH2 9 1
+    #print "NHASH2=%NHASH2|h%"
+    #getarray NHASH2 9 2
+    #print "NHASH2=%NHASH2|h%"
+
+    
+    #new files, when entries are ordered by hash but not filenames
+    if i == 0
+       string NAME = "TOC"
+    else
+      for x = 1 < entryCount
+        getarray NHASH 9 x
+        #print "NHASH=%NHASH% vs HASH=%HASH%"
+
+        if NHASH == HASH
+          getarray NAME 10 x
+          break
+        endif
+      next x
+
+      if NAME == ""
+        print "name not found for entry %i%"
+        exit
+      endif
+
+    endif
+
+endfunction
+
+
+startfunction DUMP_ZARC
+
+    string FILENAME = NAME
+    # 0x01: ignore case, 0x02: absolute paths, 0x4/0x8: ? (always set in latest pasarc)
+    math IGNORE_FLAG = FLAGS
+    math IGNORE_FLAG &= 2
+    if IGNORE_FLAG == 2
+      string FILENAME <= 1
+    endif
+
+    comtype deflate
+    open "." FILENAME 2
+    goto 0 2
+    if UncompressedSize > 4
+        getdstring SIGN 4 2
+        if SIGN == "zarc"
+            get VER short 2
+            get CHUNKS short 2
+            get UncompressedSize long 2
+            get CompressedSize long 2
+
+            string UNAME = NAME
+            string UNAME += ".unzarc"
+            
+            putvarchr MEMORY_FILE2 UncompressedSize 0
+            log MEMORY_FILE2 0 0
+            append
+            for x = 0 < CHUNKS
+                get CHUNK_ZSIZE short 2
+                get CHUNK_SIZE short 2
+                get CHUNK_OFFSET long 2
+                if CHUNK_SIZE == 0
+                    math CHUNK_SIZE = 0x10000
+                endif
+                math CHUNK_OFFSET - 1
+                if CHUNK_ZSIZE == CHUNK_SIZE
+                    log UNAME CHUNK_OFFSET CHUNK_ZSIZE 2
+                else
+                    clog UNAME CHUNK_OFFSET CHUNK_ZSIZE CHUNK_SIZE 2
+                endif
+            next x
+            append
+            #set NAME fullbasename NAME
+        endif
+    endif
+endfunction

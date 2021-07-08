@@ -1,0 +1,57 @@
+# EA SCHl movie demuxer by bnnm
+#
+# for movies that include SCHl or SHxx (.vp6/mad/etc)
+
+######################
+
+get FILE_SIZE asize
+set OFFSET long 0
+
+append #on
+do 
+    goto OFFSET
+
+    endian big
+    get BLOCK_ID long
+
+    #todo: guess_endianness32bit for early Saturn/Mac movies
+    # for now change next line to "endian big" for those
+    endian little
+    get BLOCK_SIZE long
+
+    # accept standard SCHl
+    if BLOCK_ID == 0x5343486C || BLOCK_ID == 0x5343436C || BLOCK_ID == 0x5343446C || BLOCK_ID == 0x53434C6C || BLOCK_ID == 0x5343456C  #"SCHl/SCCl/SCDl/SCLl/SCEl"
+        log MEMORY_FILE OFFSET BLOCK_SIZE
+    endif
+    
+    # accept movie SHxx (EN/FR/GE/IT/SP/RU/JA), default EN
+    # for movies with multiaudio uncomment your target language and comment the rest
+    if BLOCK_ID == 0x5348454E || BLOCK_ID == 0x5343454E || BLOCK_ID == 0x5344454E || BLOCK_ID == 0x5345454E  #"SHEN/SCEN/SDEN/SEEN"
+   #if BLOCK_ID == 0x53484652 || BLOCK_ID == 0x53434652 || BLOCK_ID == 0x53444652 || BLOCK_ID == 0x53454652  #"SHFR/SCFR/SDFR/SEFR"
+   #if BLOCK_ID == 0x53484745 || BLOCK_ID == 0x53434745 || BLOCK_ID == 0x53444745 || BLOCK_ID == 0x53454745  #"SHGE/SCGE/SDGE/SEGE"
+   #if BLOCK_ID == 0x53484954 || BLOCK_ID == 0x53434954 || BLOCK_ID == 0x53444954 || BLOCK_ID == 0x53454954  #"SHIT/SCIT/SDIT/SEIT"
+   #if BLOCK_ID == 0x53485350 || BLOCK_ID == 0x53435350 || BLOCK_ID == 0x53445350 || BLOCK_ID == 0x53455350  #"SHSP/SCSP/SDSP/SESP"
+   #if BLOCK_ID == 0x53485255 || BLOCK_ID == 0x53435255 || BLOCK_ID == 0x53445255 || BLOCK_ID == 0x53455255  #"SHRU/SCRU/SDRU/SERU"
+   #if BLOCK_ID == 0x53484A41 || BLOCK_ID == 0x53434A41 || BLOCK_ID == 0x53444A41 || BLOCK_ID == 0x53454A41  #"SHJA/SCJA/SDJA/SEJA"
+        log MEMORY_FILE OFFSET BLOCK_SIZE
+    endif
+
+    math OFFSET += BLOCK_SIZE
+
+while OFFSET < FILE_SIZE
+append #off
+
+
+get NAME basename
+get EXT extension
+string NAME += "." 
+string NAME += EXT
+string NAME += ".audio.sng"
+get SIZE asize MEMORY_FILE
+
+if SIZE == 0
+  print "File doesn't contain audio"
+  cleanexit
+endif
+
+log NAME 0 SIZE MEMORY_FILE

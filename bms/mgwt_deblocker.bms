@@ -1,0 +1,40 @@
+# Mario Golf World Tour 3DS bcstm deblocker
+#
+# skips 0x08 garbage every 0x4000 block, the first block being shorter
+# Other Camelot games dont' have this behavior
+
+log MEMORY_FILE 0 0
+
+get FILE_SIZE asize
+set BLOCK_SIZE long 0x3d40
+set OFFSET 0x04 # first 0x04 = garbage
+
+goto OFFSET 
+append #on
+do
+    goto OFFSET
+    xmath MAX_COPY " FILE_SIZE - OFFSET "
+
+    if MAX_COPY > BLOCK_SIZE
+       set MAX_COPY BLOCK_SIZE
+    endif
+
+    log MEMORY_FILE1 OFFSET MAX_COPY
+
+    math OFFSET += MAX_COPY
+    math OFFSET += 0x08
+    
+    if BLOCK_SIZE == 0x3d40
+        set BLOCK_SIZE long 0x4000
+    endif
+
+while OFFSET < FILE_SIZE
+append #off
+
+
+get MEM_SIZE asize MEMORY_FILE1
+get NAME basename
+string NAME += ".d.bcstm"
+
+log NAME 0 MEM_SIZE MEMORY_FILE1
+

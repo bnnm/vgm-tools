@@ -1,0 +1,81 @@
+# PC-FX .IND TO .TXTH
+
+get VALUES line
+
+#string NAME = VALUES
+#string NAME % " "
+
+string TEMP = VALUES
+string TEMP | "/f"
+string TEMP s "%d " SAMPLE_RATE
+   
+string MONO = VALUES
+string MONO & "/m "
+string MONO - -2
+if MONO == "/m"
+  set CHANNELS long 1
+else
+  set CHANNELS long 2
+endif
+
+string TEMP = VALUES
+string TEMP | "/bs"
+string TEMP s "0x%x " INTERLEAVE
+
+string TEMP = VALUES
+string TEMP | "/lp"
+string TEMP s "%d " LOOP_FLAG
+
+string TEMP = VALUES
+string TEMP | "/o0x"
+string TEMP s "%x " START_OFFSET
+
+
+# these sample rates (from mednafen) are apparently closer
+# to real HW than fx2wav's values
+if SAMPLE_RATE == 31560
+   set SAMPLE_RATE long 31468
+endif
+if SAMPLE_RATE == 15780
+   set SAMPLE_RATE long 15734
+endif
+if SAMPLE_RATE == 7890
+   set SAMPLE_RATE long 7868
+endif
+if SAMPLE_RATE == 7890
+   set SAMPLE_RATE long 3934
+endif
+
+
+#prepare txth
+log MEMORY_FILE 0 0
+append #on
+  string LINE = "codec = PCFX"
+  put LINE line MEMORY_FILE 
+  string LINE = "codec_mode = 3" 
+  put LINE line MEMORY_FILE 
+  if CHANNELS == 2
+    string LINE p= "interleave = 0x%x" INTERLEAVE
+    put LINE line MEMORY_FILE 
+  endif
+  string LINE p= "channels = %d" CHANNELS
+  put LINE line MEMORY_FILE 
+  string LINE p= "sample_rate = %d" SAMPLE_RATE
+  put LINE line MEMORY_FILE 
+  string LINE p= "start_offset = 0x%x" START_OFFSET
+  put LINE line MEMORY_FILE 
+  string LINE = "num_samples = data_size" 
+  put LINE line MEMORY_FILE 
+
+  # this loop flag isn't really useful
+#  if LOOP_FLAG == 1
+#    string LINE = "loop_start_sample = 0 "
+#    put LINE line MEMORY_FILE 
+#    string LINE = "loop_end_sample = data_size" 
+#    put LINE line MEMORY_FILE 
+#  endif
+
+append #off
+
+get TXTH_SIZE asize MEMORY_FILE
+log ".adpcm.txth" 0 TXTH_SIZE MEMORY_FILE

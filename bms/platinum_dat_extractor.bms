@@ -1,0 +1,88 @@
+# Platinum Games .dat extractor by bnnm
+
+# filtered for type
+set IS_FILTER long 1
+set IS_FILTER_BNK long 1
+set IS_FILTER_DAT long 1
+set IS_FILTER_Z   long 1
+
+###
+
+idstring "DAT\0"
+
+get TEST long
+endian guess TEST
+
+goto 0x04
+get FILES long
+get OFFSETS_OFFSET long
+get TYPES_OFFSET long
+
+get NAMES_OFFSET long
+get SIZES_OFFSET long
+get UNKNOWN_OFFSET long
+get DUMMY long
+
+
+goto OFFSETS_OFFSET
+for I = 0 < FILES
+    get OFFSET long
+    putarray 0 I OFFSET
+next I
+
+goto TYPES_OFFSET
+for I = 0 < FILES
+    get TYPE string
+    putarray 1 I TYPE
+next I
+
+goto NAMES_OFFSET
+get NAME_SIZE long
+for I = 0 < FILES
+    getdstring NAME NAME_SIZE
+    putarray 2 I NAME
+next I
+
+goto SIZES_OFFSET
+for I = 0 < FILES
+    get SIZE long
+    putarray 3 I SIZE
+next I
+
+
+for I = 0 < FILES
+    getarray OFFSET 0 I 
+   #getarray TYPE 1 I  #not always ordered in Nier Automata?
+    getarray NAME 2 I 
+    getarray SIZE 3 I 
+    
+    string TYPE = NAME
+    string TYPE |= "."
+
+    set WRITE_FILE long 1
+    if IS_FILTER == 1
+        set WRITE_FILE long 0
+        if   IS_FILTER_BNK == 1 && TYPE == "bnk"
+            set WRITE_FILE long 1
+        elif IS_FILTER_DAT == 1 && TYPE == "dat"
+            set WRITE_FILE long 1
+        elif IS_FILTER_Z   == 1 && TYPE == "z"
+            set WRITE_FILE long 1
+        endif
+    endif
+
+    if WRITE_FILE == 1
+        if TYPE == "dat"
+            string NAME += ".wdat" #to ease identification
+        endif
+
+        if TYPE == "z" #zlib
+            comtype unzip_dynamic
+            clog NAME OFFSET SIZE SIZE
+        else
+            log NAME OFFSET SIZE
+        endif
+        
+    endif
+next I
+
