@@ -3,6 +3,8 @@
 # Original version by soneek
 # v20180320 by bnnm 
 #   (extract unique entries only, fix KOVS/ATSL, etc)
+# v20210912 by bnnm 
+#   (python3, subdirs)
 
 import sys
 import os
@@ -14,16 +16,16 @@ def readu32(file, le=True):
     else:
         return struct.unpack(">I", file.read(4))[0] 
 
-
+subfolders = True
 if len(sys.argv) != 2:
    print("Usage: G1LExtract infile.g1l")
    exit()
 
 g1l = open(sys.argv[1], 'rb')
 fourcc = g1l.read(4)
-if fourcc == "_L1G":
+if fourcc == b"_L1G":
     le = True
-elif fourcc == "G1L_":
+elif fourcc == b"G1L_":
     le = False
 else:
     print("Infile is not a G1L file")
@@ -64,43 +66,48 @@ for i in range(fileCount):
         else:
             print("Unknown RIFF header with GUID %s" % guid)
 
-    elif header == "WiiB":
+    elif header == b"WiiB":
         g1l.seek(0x18,1)
         channelSize = readu32(g1l, False)
         channelCount = readu32(g1l, False)
         ext = ".dsp" #".wiibgm" #.dsp in Romance of Three Kingdoms 12 WiiU?
         fileSize = channelCount * channelSize + 0x800
 
-    elif header == "WiiV":
+    elif header == b"WiiV":
         g1l.seek(0xc,1)
         fileSize = readu32(g1l, False)
         ext = ".dsp" #".wiivoice" #.dsp in Romance of Three Kingdoms 12 WiiU?
 
-    elif header == "KTSS":
+    elif header == b"KTSS":
         ext = ".ktss"
         fileSize = readu32(g1l, le)
 
-    elif header == "ATSL":
+    elif header == b"ATSL":
         # .atsl don't have a size, and entries may point again to a previous
         # subfile (like G1L does), so we can't sum all subfile sizes.
         # Instead, find final (highest) subfile and use offset+size as file end.
 
         g1l.seek(fileOffset + 0x04)
         headerSize = readu32(g1l, le)
-        #g1l.seek(fileOffset + 0x0d)
-        #subfileType = read8(g1l)
+        g1l.seek(fileOffset + 0x0c)
+        subfileType = readu32(g1l)
         g1l.seek(fileOffset + 0x14)
         subfileCount = readu32(g1l, le)
         
-        #subfileBe = (type != 0x02) # PSP .at3
         subfileLe = True
+        if (subfileType & 0x0000FFFF) == 0x0200: # PSP .at3
+            subfileLe = False
+
+        entrySize = 0x28
+        if (subfileType & 0x000000FF) == 1:
+            entrySize = 0x3c
 
         maxSubfileOffset = 0
         maxSubfileSize = 0
         for j in range(subfileCount):
-            g1l.seek(fileOffset + headerSize + j*0x28 + 0x04)
+            g1l.seek(fileOffset + headerSize + j*entrySize + 0x04)
             subfileOffset = readu32(g1l, subfileLe)
-            g1l.seek(fileOffset + headerSize + j*0x28 + 0x08)
+            g1l.seek(fileOffset + headerSize + j*entrySize + 0x08)
             subfileSize = readu32(g1l, subfileLe)
 
             if maxSubfileOffset < subfileOffset:
@@ -110,28 +117,25 @@ for i in range(fileCount):
         ext = ".atsl"
         fileSize = maxSubfileOffset + maxSubfileSize
 
-    elif header == "KOVS":
+    elif header == b"KOVS":
         ext = ".kvs"
         fileSize = readu32(g1l, le) + 0x20
 
     else:
         print ("Unknown file type %s" % (header))
         continue
-        
+    
     g1l.seek(fileOffset)
     if fileCount == 1:
         fileName = os.path.splitext(sys.argv[1])[0] + ext
     else:
         fileName = os.path.splitext(sys.argv[1])[0] + "_%04d%s" % (filesDone, ext)
+        if subfolders:
+            folder = os.path.splitext(sys.argv[1])[0]
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+            fileName = os.path.join(folder, fileName)
     filesDone += 1
-
-    #if ext == ".wiibgm": # Just dumping wiibgm for now
-    #    outFile = open(fileName, 'wb')
-    #    if ext == ".g1l":
-    #        outFile.write("G1L_0000" + struct.pack(">I", 0x1c + fileSize) + struct.pack(">I", 0x1c) + struct.pack(">I", codec) + struct.pack(">I", 1) + struct.pack(">I", 0x1c))    
-    #    outFile.write(g1l.read(fileSize))
-    #    outFile.close()
-    #else:
 
     outFile = open(fileName, 'wb')
     outFile.write(g1l.read(fileSize))
