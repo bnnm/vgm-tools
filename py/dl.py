@@ -24,7 +24,7 @@
 #   assets/bgm/file2                            # partial URL, joins prefix/suffix above + this (if any)
 #   assets/sfx/file3                            # partial URL
 
-import os, sys, fnmatch
+import os, sys, fnmatch, argparse
 import ssl, urllib.request
 import multiprocessing.dummy
 
@@ -165,6 +165,8 @@ class Downloader(object):
         if self.name:
             path = self.name
             self.name = None #consume to avoid overwrites
+        elif self.cut == '?':
+            path = url.rsplit('/', 1)[1]
         elif self.cut and self.cut in url:
             path = url.split(self.cut)[1]
         else:
@@ -173,9 +175,13 @@ class Downloader(object):
 
         if not path:
             path = 'index'
-
+            
         if self.out:
             path = self.out + path
+
+        # remove query string (may overwrite, add config to keep it?)
+        if '?' in path:
+            path = path.split('?')[0]
 
         for rep in "*<>:|?\"":
             path = path.replace(rep, '_')
@@ -184,7 +190,7 @@ class Downloader(object):
             return
         self.urls.append(item)
 
-    def _read(self, filename=None) :
+    def _read(self, filename=None, vars=None):
         if not filename:
             filename = 'url.txt'
 
@@ -193,13 +199,17 @@ class Downloader(object):
             return
 
         print("reading %s" % (filename))
-        with open(filename, "r") as f:
+        with open(filename, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 #print(line)
 
                 if not line or line.startswith('#'):
                     continue
+                
+                if vars:
+                    for key,value in vars:
+                        line = line.replace("{%s}" % (key), value)
 
                 is_config = self._parse_config(line)
 
@@ -270,14 +280,60 @@ class Downloader(object):
         print("downloaded %i of %i" % (self.counter.value, len(self.urls)))
 
 
-    def start(self, filename=None):
-        self._read(filename)
+    def start(self, filename=None, vars=None):
+        self._read(filename, vars)
         self._launch()
 
+
+class Cli(object):
+    def _parse(self):
+        description = (
+            "Downloads from url txt file"
+        )
+        epilog = (
+            "examples:\n"
+            "  %(prog)s *.txt\n"
+        )
+
+        p = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
+        p.add_argument('files', help="Files to get (wildcards work)", nargs='+')
+        p.add_argument('-v', dest='vars', help="Set key=value variables, replacing {key} in .txt", nargs='*')
+        return p.parse_args()
+    
+    def _read_map(self, filename):
+        vars = []
+        with open(filename, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+
+                if not line or line.startswith('#'):
+                    continue
+
+                if line.endswith('.txt'):
+                    file = line
+                    Downloader().start(file, vars)
+                    vars = []
+                    continue
+
+                keyval = line.split("=", 1)
+                vars.append( (keyval[0], keyval[1]) )
+
+
+    def start(self):
+        args = self._parse()
+        
+        vars = []
+        if args.vars:
+            for var in args.vars:
+                keyval = var.split("=", 1)
+                vars.append( (keyval[0], keyval[1]) )
+        
+        for file in args.files:
+            if file.endswith('.map'):
+                self._read_map(file)
+            else:
+                Downloader().start(file, vars)
+
+
 if __name__ == "__main__":
-    filename = None
-    if len(sys.argv) > 1:
-        filename = sys.argv[1]
-
-    Downloader().start(filename)
-
+    Cli().start()
