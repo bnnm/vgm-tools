@@ -1,0 +1,45 @@
+# EA WIV (Xa10/k3Wl) demuxer by bnnm
+
+
+get FILESIZE asize
+set OFFSET long 0
+
+log MEMORY_FILE 0 0
+
+append #on
+do
+    goto OFFSET
+
+    endian big
+    get BLOCK_ID long
+
+    get BLOCK_SIZE long
+    endian guess BLOCK_SIZE
+
+    if BLOCK_ID == 0 || BLOCK_SIZE == 0
+        break
+    endif
+
+    # accept "Xa10"
+    if BLOCK_ID == 0x58613130
+        log MEMORY_FILE OFFSET BLOCK_SIZE
+    endif
+
+    math OFFSET += BLOCK_SIZE
+
+while OFFSET < FILESIZE
+append #off
+
+
+get NAME basename
+get EXT extension
+string NAME += ".demux."
+string NAME += EXT
+get SIZE asize MEMORY_FILE
+
+if SIZE == 0
+    print "file has no audio"
+    exit
+endif
+
+log NAME 0 SIZE MEMORY_FILE
