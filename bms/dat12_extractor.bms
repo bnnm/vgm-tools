@@ -1,0 +1,216 @@
+# DAT12.BIN extractor from Rim Runners (PS2) by bnnm
+# decryption algorithm by punk7890
+
+open FDSE "DAT12.BIN.dec" 0
+#open FDSE "XOR.TBL" 1
+
+idstring "Mps2"
+get FILES long
+
+callfunction MEM_DECRYPT_INIT 1
+
+# read XOR
+#get TBL_SIZE asize 1
+#log MEMORY_FILE8 0x00 TBL_SIZE 1
+
+# decrypt TOC at MEMORY_FILE9
+log MEMORY_FILE9 0x00 0x800 0
+#todo unknown TOC decryption (load in emu, get memdump, find "Mps2")
+#callfunction TOC_DECRYPT 1
+#log "TOC" 0x00 0x800 MEMORY_FILE9
+
+goto 0x18 MEMORY_FILE9
+for I = 0 < FILES
+    get DUMMY long MEMORY_FILE9
+    get UNKNOWN long MEMORY_FILE9
+    get SIZE long MEMORY_FILE9
+    get OFFSET long MEMORY_FILE9
+    getdstring NAME 0x10 MEMORY_FILE9
+
+    log MEMORY_FILE8 0 0
+    log MEMORY_FILE8 OFFSET SIZE
+    
+    #string NAME2 p= "%s.enc" NAME
+    #log NAME2 0x00 SIZE MEMORY_FILE8
+
+    callfunction AWA_DECRYPT 1
+    log NAME 0x00 SIZE MEMORY_FILE8
+next I
+
+###
+
+startfunction MEM_DECRYPT_INIT
+    set MEMORY_FILE10 string "
+
+    short get_s16le(unsigned char* p) {
+        return (p[0]) | (p[1]<<8);
+    }
+    unsigned short get_u16le(unsigned char* p) {
+        return (p[0]) | (p[1]<<8);
+    }
+    unsigned int get_u32le(unsigned char* p) {
+        return (p[0]) | (p[1]<<8) | (p[2]<<16) | (p[3]<<24);
+    }
+
+    void put_u32le(unsigned char* buf, unsigned int v) {
+        buf[0] = (v >> 0)  & 0xFF;
+        buf[1] = (v >> 8)  & 0xFF;
+        buf[2] = (v >> 16) & 0xFF;
+        buf[3] = (v >> 24) & 0xFF;
+    }
+    void put_u16le(unsigned char* buf, unsigned int v) {
+        buf[0] = (v >> 0)  & 0xFF;
+        buf[1] = (v >> 8)  & 0xFF;
+    }
+
+    void decrypt_toc(unsigned char* hdr, unsigned char* tbl, unsigned int tbl_size, int files) {
+        int hdr_o = 0x18;
+        int tbl_o = tbl_size - hdr_o - 0x04;
+        int max_o = 0x18 + files * 0x18;
+
+        while (hdr_o < max_o) {
+            unsigned int xor, val;
+            xor = get_u32le(tbl + tbl_o);
+            val = get_u32le(hdr + hdr_o);
+            val ^= xor;
+            
+            put_u32le(hdr + hdr_o, val);
+            hdr_o += 0x04;
+            tbl_o -= 0x04;
+        }
+    }
+
+    void decrypt_awa(unsigned char* buf, unsigned int offset, unsigned int size, char* name) {
+
+        /* decrypt header + first bytes */
+        unsigned int pre = 0x0B + 0x01; //fixed?
+        unsigned int seed = (offset << 3) ^ 0xFFFFFFFF; //NOR
+        unsigned int key = (seed - size + pre) & 0xFFFFFFFF;
+
+        unsigned int pos = 0x00;
+        unsigned int increases[] = {0x0000, 0xfc0d, 0xf81a, 0xf427, 0xf034, 0xec41, 0xe84e, 0xe45b, 0xe068 };
+        while (pos < 0x24) {
+            unsigned int val = get_u32le(buf + pos); //LE
+            unsigned int increase = increases[pos / 4];
+            
+            unsigned int cur_key = (key & 0xFFFF0000) | ((key + increase) & 0x0000FFFF);
+            val = val ^ cur_key;
+
+            put_u32le(buf + pos, val);
+
+            pos += 0x04;
+        }
+        
+        /* decrypt random bytes based on name */
+        unsigned int start_pos = 0x24;
+        for (int i = 0; i < 0x10; i++) {
+            unsigned char letter = name[i]; // toc[name_offset + i];
+
+            unsigned int key, xor, pos1, pos2;
+
+            key = (letter + 0xFFE1) & 0xFFFF;//34
+            key = (key + 0x0B) & 0x00FF; //3F
+
+            pos1 = (key << 2) + key;
+            pos2 = (pos1 << 1) + key;
+
+            xor = (key ^ 0xFFFFFFFF) & 0xFF;
+        
+            //put_u32le(buf + i * 0x10 +0, xor);
+            //put_u32le(buf + i * 0x10 + 4, pos1);
+            //put_u32le(buf + i * 0x10 + 8, pos2);
+            //put_u32le(buf + i * 0x10 + 0xc, key);
+
+            buf[pos1 + start_pos] ^= xor;
+            buf[pos2 + start_pos] ^= xor;
+
+            if (letter == '\0')
+                break;
+        }
+
+        /* decrypt body */
+        unsigned int key_s0, key_t6, key_t7;
+        unsigned int key_v1 = 0x00FF; //fixed
+        unsigned int key_t2 = 0x4F; //volume
+        unsigned int key_a0 = 0x0000; //increases by 0x100
+
+        pos = 0x18;
+        while (pos < size) {
+            int val_s2, val_s1, val;
+
+            val_s2 = get_s16le(buf + pos);
+            val = (val_s2 ^ 0x7F00);
+
+            /* original function does decrypt and interpolation+volume with next sample,
+             * but that step is skipped here since it's not part of decoding */
+            /*
+            if (pos >= size - 0x04)
+                val_s1 = 0;
+            else
+                val_s1 = get_s16le(buf + pos + 0x04);
+
+            //00262bcc
+            key_t6 = key_a0 & 0x00FF; //always 0x0000?
+            key_t7 = key_v1 - key_t6; //always 0x00FF?
+
+            //00262bd4
+            key_s0 = 0x0000; //s0 = existing sample in output buffer (probably for mono?)
+
+            //00262bd8
+            val_s2 = (val_s2 ^ 0x7F00);
+            val_s2 = (val_s2 * key_t7);
+
+            //00262be0
+            val_s1 = (val_s1 ^ 0x7F00);
+            val_s1 = (val_s1 * key_t6); //mult1: sets acc=1?
+            val = (int)((unsigned)val_s2 + (unsigned)val_s1); //s1
+
+            //00262bec
+            val = val >> 8;
+            val = val * key_t2;
+            val = val >> 7;
+            val = val + key_s0;
+
+            //00262bfc
+            if (val > 0x7FFF)
+                val = 0x7FFF;
+            else if (val < -0x8000)
+                val = -0x8000;
+            */
+
+            //00262c28
+            put_u16le(buf + pos, val);
+
+            //00262c2c
+            //(repeat for R samples, looks the same, uses different pos counter)
+
+            //00262c64
+            pos += 0x02;
+            
+            //00262c94
+            key_a0 += 0x100;
+        }
+    }
+    "
+endfunction
+
+startfunction TOC_DECRYPT
+    # C decryption
+    goto 0 MEMORY_FILE8
+    goto 0 MEMORY_FILE9
+    #calldll MEMORY_FILE10 "decrypt_toc" "tcc" RET MEMORY_FILE9 MEMORY_FILE8 TBL_SIZE FILES
+endfunction
+
+startfunction AWA_DECRYPT
+    #    math OFFSET = MEM_DECRYPT_ARG1
+    #    math SIZE = MEM_DECRYPT_ARG2
+    #
+
+    # C decryption
+    goto 0 MEMORY_FILE8
+    calldll MEMORY_FILE10 "decrypt_awa" "tcc" RET MEMORY_FILE8 OFFSET SIZE NAME
+endfunction
+
+
+# XOR.TBL
+# ?

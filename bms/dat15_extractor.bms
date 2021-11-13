@@ -1,0 +1,231 @@
+# DAT15.BIN extractor from Missing Parts Side A (PS2) by bnnm
+# decryption algorithm by punk7890
+
+open FDSE "DAT15.BIN" 0
+open FDSE "XOR.TBL" 1
+
+idstring "Mps2"
+get FILES long
+
+callfunction MEM_DECRYPT_INIT 1
+
+# read XOR
+get TBL_SIZE asize 1
+log MEMORY_FILE8 0x00 TBL_SIZE 1
+
+# decrypt TOC at MEMORY_FILE9
+log MEMORY_FILE9 0x00 0x800 0
+callfunction TOC_DECRYPT 1
+#log "TOC" 0x00 0x800 MEMORY_FILE9
+
+goto 0x18 MEMORY_FILE9
+for I = 0 < FILES
+
+    get OFFSET long MEMORY_FILE9
+    get SIZE long MEMORY_FILE9
+    getdstring NAME 0x10 MEMORY_FILE9
+
+    log MEMORY_FILE8 0 0
+    log MEMORY_FILE8 OFFSET SIZE
+    
+    #string NAME2 p= "%s.enc" NAME
+    #log NAME2 0x00 SIZE MEMORY_FILE8
+
+    callfunction AWA_DECRYPT 1
+    log NAME 0x00 SIZE MEMORY_FILE8
+next I
+
+###
+
+startfunction MEM_DECRYPT_INIT
+    set MEMORY_FILE10 string "
+
+    short get_s16le(unsigned char* p) {
+        return (p[0]) | (p[1]<<8);
+    }
+    unsigned short get_u16le(unsigned char* p) {
+        return (p[0]) | (p[1]<<8);
+    }
+    unsigned int get_u32le(unsigned char* p) {
+        return (p[0]) | (p[1]<<8) | (p[2]<<16) | (p[3]<<24);
+    }
+
+    void put_u32le(unsigned char* buf, unsigned int v) {
+        buf[0] = (v >> 0)  & 0xFF;
+        buf[1] = (v >> 8)  & 0xFF;
+        buf[2] = (v >> 16) & 0xFF;
+        buf[3] = (v >> 24) & 0xFF;
+    }
+    void put_u16le(unsigned char* buf, unsigned int v) {
+        buf[0] = (v >> 0)  & 0xFF;
+        buf[1] = (v >> 8)  & 0xFF;
+    }
+
+    void decrypt_toc(unsigned char* hdr, unsigned char* tbl, unsigned int tbl_size, int files) {
+        int hdr_o = 0x18;
+        int tbl_o = tbl_size - hdr_o - 0x04;
+        int max_o = 0x18 + files * 0x18;
+
+        while (hdr_o < max_o) {
+            unsigned int xor, val;
+            xor = get_u32le(tbl + tbl_o);
+            val = get_u32le(hdr + hdr_o);
+            val ^= xor;
+            
+            put_u32le(hdr + hdr_o, val);
+            hdr_o += 0x04;
+            tbl_o -= 0x04;
+        }
+    }
+
+    void decrypt_awa(unsigned char* buf, unsigned int offset, unsigned int size, char* name) {
+
+        /* decrypt header + first bytes */
+        unsigned int seed = offset ^ 0xFFFFFFFF; //NOR
+        unsigned int key = (seed + size) & 0xFFFFFFFF;
+
+        unsigned int pos = 0x00;
+        while (pos < 0x20) {
+            unsigned int val = get_u32le(buf + pos); //LE
+            val = val ^ key;
+
+            put_u32le(buf + pos, val);
+
+            key -= 0x03E5;
+            if (key < 0)
+                key = 0xFFFFFFFF + key;
+
+            pos += 0x04;
+        }
+        
+        /* decrypt random bytes based on name */
+        // 0025ba60
+        for (int i = 0; i < 0x10; i++) {
+            unsigned char letter = name[i]; // toc[name_offset + i];
+            if (letter == '\0')
+                break;
+            unsigned int key = letter;
+            pos = (key << 3) - key + 0x20;
+            key = (key ^ 0xFFFFFFFF) & 0xFF;
+        
+            buf[pos] ^= key;
+        }
+
+        /* decrypt body */
+        unsigned int key_s0, key_t6, key_t7;
+        unsigned int key_v1 = 0x00FF; //fixed
+        unsigned int key_t2 = 0x4F; //volume
+        unsigned int key_a0 = 0x0000; //increases by 0x100
+
+        pos = 0x18;
+        while (pos < size) {
+            int val_s2, val_s1, val;
+
+            //00262bc4
+            val_s2 = get_s16le(buf + pos);
+            val = (val_s2 ^ 0x7F00);
+
+            /* original function does decrypt and interpolation+volume with next sample,
+             * but that step is skipped here since it's not part of decoding */
+            /*
+            if (pos >= size - 0x04)
+                val_s1 = 0;
+            else
+                val_s1 = get_s16le(buf + pos + 0x04);
+
+            //00262bcc
+            key_t6 = key_a0 & 0x00FF; //always 0x0000?
+            key_t7 = key_v1 - key_t6; //always 0x00FF?
+
+            //00262bd4
+            key_s0 = 0x0000; //s0 = existing sample in output buffer (probably for mono?)
+
+            //00262bd8
+            val_s2 = (val_s2 ^ 0x7F00);
+            val_s2 = (val_s2 * key_t7);
+
+            //00262be0
+            val_s1 = (val_s1 ^ 0x7F00);
+            val_s1 = (val_s1 * key_t6); //mult1: sets acc=1?
+            val = (int)((unsigned)val_s2 + (unsigned)val_s1); //s1
+
+            //00262bec
+            val = val >> 8;
+            val = val * key_t2;
+            val = val >> 7;
+            val = val + key_s0;
+
+            //00262bfc
+            if (val > 0x7FFF)
+                val = 0x7FFF;
+            else if (val < -0x8000)
+                val = -0x8000;
+            */
+
+            //00262c28
+            put_u16le(buf + pos, val);
+
+            //00262c2c
+            //(repeat for R samples, looks the same, uses different pos counter)
+
+            //00262c64
+            pos += 0x02;
+            
+            //00262c94
+            key_a0 += 0x100;
+        }
+    }
+    "
+endfunction
+
+startfunction TOC_DECRYPT
+    # C decryption
+    goto 0 MEMORY_FILE8
+    goto 0 MEMORY_FILE9
+    calldll MEMORY_FILE10 "decrypt_toc" "tcc" RET MEMORY_FILE9 MEMORY_FILE8 TBL_SIZE FILES
+endfunction
+
+startfunction AWA_DECRYPT
+    #    math OFFSET = MEM_DECRYPT_ARG1
+    #    math SIZE = MEM_DECRYPT_ARG2
+    #
+
+    # C decryption
+    goto 0 MEMORY_FILE8
+    calldll MEMORY_FILE10 "decrypt_awa" "tcc" RET MEMORY_FILE8 OFFSET SIZE NAME
+endfunction
+
+
+# XOR.TBL
+# 96300777 2C610EEE BA510999 19C46D07 8FF46A70 35A563E9 A395649E 3288DB0E 
+# A4B8DC79 1EE9D5E0 88D9D297 2B4CB609 BD7CB17E 072DB8E7 911DBF90 6410B71D 
+# F220B06A 4871B9F3 DE41BE84 7DD4DA1A EBE4DD6D 51B5D4F4 C785D383 56986C13 
+# C0A86B64 7AF962FD ECC9658A 4F5C0114 D96C0663 633D0FFA F50D088D C8206E3B 
+# 5E10694C E44160D5 727167A2 D1E4033C 47D4044B FD850DD2 6BB50AA5 FAA8B535 
+# 6C98B242 D6C9BBDB 40F9BCAC E36CD832 755CDF45 CF0DD6DC 593DD1AB AC30D926 
+# 3A00DE51 8051D7C8 1661D0BF B5F4B421 23C4B356 9995BACF 0FA5BDB8 9EB80228 
+# 0888055F B2D90CC6 24E90BB1 877C6F2F 114C6858 AB1D61C1 3D2D66B6 9041DC76 
+# 0671DB01 BC20D298 2A10D5EF 8985B171 1FB5B606 A5E4BF9F 33D4B8E8 A2C90778 
+# 34F9000F 8EA80996 18980EE1 BB0D6A7F 2D3D6D08 976C6491 015C63E6 F4516B6B 
+# 62616C1C D8306585 4E0062F2 ED95066C 7BA5011B C1F40882 57C40FF5 C6D9B065 
+# 50E9B712 EAB8BE8B 7C88B9FC DF1DDD62 492DDA15 F37CD38C 654CD4FB 5861B24D 
+# CE51B53A 7400BCA3 E230BBD4 41A5DF4A D795D83D 6DC4D1A4 FBF4D6D3 6AE96943 
+# FCD96E34 468867AD D0B860DA 732D0444 E51D0333 5F4C0AAA C97C0DDD 3C710550 
+# AA410227 10100BBE 86200CC9 25B56857 B3856F20 09D466B9 9FE461CE 0EF9DE5E 
+# 98C9D929 2298D0B0 B4A8D7C7 173DB359 810DB42E 3B5CBDB7 AD6CBAC0 2083B8ED 
+# B6B3BF9A 0CE2B603 9AD2B174 3947D5EA AF77D29D 1526DB04 8316DC73 120B63E3 
+# 843B6494 3E6A6D0D A85A6A7A 0BCF0EE4 9DFF0993 27AE000A B19E077D 44930FF0 
+# D2A30887 68F2011E FEC20669 5D5762F7 CB676580 71366C19 E7066B6E 761BD4FE 
+# E02BD389 5A7ADA10 CC4ADD67 6FDFB9F9 F9EFBE8E 43BEB717 D58EB060 E8A3D6D6 
+# 7E93D1A1 C4C2D838 52F2DF4F F167BBD1 6757BCA6 DD06B53F 4B36B248 DA2B0DD8 
+# 4C1B0AAF F64A0336 607A0441 C3EF60DF 55DF67A8 EF8E6E31 79BE6946 8CB361CB 
+# 1A8366BC A0D26F25 36E26852 95770CCC 03470BBB B9160222 2F260555 BE3BBAC5 
+# 280BBDB2 925AB42B 046AB35C A7FFD7C2 31CFD0B5 8B9ED92C 1DAEDE5B B0C2649B 
+# 26F263EC 9CA36A75 0A936D02 A906099C 3F360EEB 85670772 13570005 824ABF95 
+# 147AB8E2 AE2BB17B 381BB60C 9B8ED292 0DBED5E5 B7EFDC7C 21DFDB0B D4D2D386 
+# 42E2D4F1 F8B3DD68 6E83DA1F CD16BE81 5B26B9F6 E177B06F 7747B718 E65A0888 
+# 706A0FFF CA3B0666 5C0B0111 FF9E658F 69AE62F8 D3FF6B61 45CF6C16 78E20AA0 
+# EED20DD7 5483044E C2B30339 612667A7 F71660D0 4D476949 DB776E3E 4A6AD1AE 
+# DC5AD6D9 660BDF40 F03BD837 53AEBCA9 C59EBBDE 7FCFB247 E9FFB530 1CF2BDBD 
+# 8AC2BACA 3093B353 A6A3B424 0536D0BA 9306D7CD 2957DE54 BF67D923 2E7A66B3 
+# B84A61C4 021B685D 942B6F2A 37BE0BB4 A18E0CC3 1BDF055A 8DEF022D

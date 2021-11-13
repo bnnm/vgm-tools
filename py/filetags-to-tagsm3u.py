@@ -5,16 +5,27 @@
 
 import glob, hashlib, re, os
 
+
+use_size = False #set to true to find files by approximate sizes
+size_threshold = 0x100
+
+write_track = False
+write_artist = False
+
 dir_old = 'OLD'
 dir_new = 'NEW'
 chunk = 0x10000
 
-pt_tags1 = re.compile(r"([0-9][A-Za-z0-9]+)[ ]+[-]*[ ]*([A-Za-z0-9!@$%&().,']+)[ ]+[-][ ]+(.+)")
-pt_tags2 = re.compile(r"([0-9][A-Za-z0-9]+)[ ]+(.+)")
+
+pt_tags1 = re.compile(r"([0-9][A-Za-z0-9]*)[ ]+[-]*[ ]*([A-Za-z0-9!@$%&()., ']+)[ ]+[-][ ]+(.+)")
+pt_tags2 = re.compile(r"([0-9][A-Za-z0-9]*)[ ]+(.+)")
 
 ignore_exts = ['.txt', '.m3u', '.zip', '.7z', '.bms']
 
 def get_hash(file):
+    if use_size:
+        return os.path.getsize(file)
+
     hasher = hashlib.md5()
     with open(file, 'rb') as f:
         while True:
@@ -41,7 +52,7 @@ def get_items(path):
 def main():
     items_old = get_items(dir_old + '/*.*')
     items_new = get_items(dir_new + '/*.*')
-    
+
     tags = []
     for hash_old, file_old in items_old:
         found = False
@@ -68,9 +79,14 @@ def main():
             artist = None
             title = base_old
 
+        # find file
         for hash_new, file_new in items_new:
-            if hash_old != hash_new:
-                continue
+            if use_size:
+                if not (hash_old <= hash_new and hash_old + size_threshold >= hash_new):
+                    continue
+            else:
+                if hash_old != hash_new:
+                    continue
             base_new = os.path.basename(file_new)
 
             tags.append((base_new, track, artist, title))
@@ -80,24 +96,40 @@ def main():
         if not found:
             tags.append(('#?', track, artist, title))
 
-    lines = [
-        '# @ALBUM    ',
-        '# $AUTOTRACK',
-        '#',
-        '',
-    ]
 
+    
+    lines = []
+    artists = []
     for file, track, artist, title in tags:
-        if track:
+        if track and write_track:
             lines.append('##%%TRACK    %s' % (track))
+
         if artist:
-            lines.append('# %%ARTIST   %s' % (artist))
+            if write_artist:
+                lines.append('# %%ARTIST   %s' % (artist))
+            elif artist not in artists:
+                artists.append(artist)
+
         if title:
             lines.append('# %%TITLE    %s' % (title))
+
         if file:
             lines.append('%s' % (file))
 
+    
+    header = []
+    header.append('# @ALBUM    ')
+    if artists:
+        header.append('# @ARTIST   %s' % (', '.join(artists)))
+    header.append('# $AUTOTRACK')
+    header.append('#')
+    header.append('')
+    header.append('')
+
+
     with open(dir_new+'/!tags.m3u', 'w') as f:
+        f.write('\n'.join(header))
         f.write('\n'.join(lines))
 
-main()
+if __name__ == "__main__":
+    main()

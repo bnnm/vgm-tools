@@ -1,0 +1,21 @@
+# COGEN: Sword or Rewind (AssetBundle) decryptor
+
+string KEY = "_COGEN_GEMDROPS_"
+
+get IV basename
+strlen IV_LEN IV
+if IV_LEN < 16
+    for I = IV_LEN < 16
+         string IV += "_"
+    next I
+endif
+# bigger than 16 should be clamped, seems quickbms already does it
+
+get SIZE asize
+
+get NAME basename
+string NAME += ".unity3d"
+
+encryption aes_128_cbc KEY IV 0 16
+
+log NAME 0x0 SIZE
