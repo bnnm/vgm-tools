@@ -1,0 +1,34 @@
+# RIFF fixer
+
+idstring "RIFF"
+endian little
+get SIZE long
+math SIZE += 0x08
+
+get FILE_SIZE asize
+
+# for same RIFFs
+if SIZE == FILE_SIZE
+    print "correct RIFF, nothing to fix"
+    exit
+endif
+
+# for truncated RIFFs
+if SIZE > FILE_SIZE
+    print "WARNING: truncated data, recheck original"
+    exit
+endif
+
+# for RIFFs with bad RIFF size but extra data (like more chunks)
+math FILE_SIZE += 0x04
+if FILE_SIZE >= SIZE
+    goto SIZE
+    get TEST long
+    if TEST != 0
+        print "WARNING: riff size with extra data, report"
+        exit
+    endif
+endif
+
+get NAME filename
+log NAME 0x00 SIZE
