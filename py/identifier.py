@@ -139,6 +139,11 @@ for filename in os.listdir("."):
         channels = header.get_u16le(0x16)
         type = "riff"
 
+    if (id == 0x424B4844): # BKHD
+        #channels = header.get_u16le(0x16)
+        channels = 0
+        type = "bkhd"
+
     if (id == 0x73616266): # sabf
         channels = 0
         type = "sab"
