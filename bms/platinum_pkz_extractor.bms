@@ -16,7 +16,9 @@ goto CURRENT
 
 if ALGO == "ZStandard"
    comtype "zstd"
-else
+else ALGO == "None" #seen in .wem packs in Babilon's Fall
+   comtype "copy"
+else 
    print "Unknown compression"
    exit
 endif

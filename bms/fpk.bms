@@ -1,0 +1,26 @@
+# Bleach: Heat the Soul .fpk extract
+
+#comtype ??? 
+
+get DUMMY long
+get FILES long
+get NAME_OFFSET long
+get FILE_SIZE long
+
+for I = 0 < FILES
+    getdstring NAME 0x20
+
+    get DUMMY long
+    get OFFSET long
+    get ZSIZE long
+    get SIZE long
+
+    if ZSIZE == SIZE
+        log NAME OFFSET SIZE
+    else
+        #TODO: some kind of simple LZ (not huffman)
+        #clog NAME OFFSET ZSIZE SIZE
+        string NAME += ".z"
+        log NAME OFFSET SIZE
+    endif
+next I

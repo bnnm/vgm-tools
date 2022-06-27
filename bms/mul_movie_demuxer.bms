@@ -13,19 +13,41 @@ set OFFSET long 0
 math IS_VIDEO = 0
 math IS_AUDIO = 0
 
+goto 0x800
+get TEST1 long
+get TEST2 long
+goto 0x2000
+get TEST3 long
+get TEST4 long
+if TEST1 > 0 || TEST2 > 0
+    set HEADER_SIZE long 0x800
+elif TEST3 > 0 || TEST4 > 0
+    set HEADER_SIZE long 0x2000
+else
+    print "unknown start"
+    exit
+endif
+
 append #on
 do 
     goto OFFSET
 
     if OFFSET == 0
-        math BLOCK_SIZE = 0x800
+        math BLOCK_SIZE = HEADER_SIZE
         math IS_VALID = 1
     else
         get BLOCK_TYPE long
         get BLOCK_SIZE long
         
+        # TR2013 is padded
+        xmath BLOCK_EXTRA "BLOCK_SIZE % 0x10"
+        if BLOCK_EXTRA != 0
+            xmath BLOCK_PADDING " 0x10 - BLOCK_EXTRA "
+            math BLOCK_SIZE += BLOCK_PADDING
+        endif
+        
         math BLOCK_SIZE += 0x10
-        if BLOCK_TYPE == 0x00000000
+        if BLOCK_TYPE == 0
             math IS_VALID = 1
             math IS_AUDIO = 1
         else    
@@ -40,7 +62,6 @@ do
     endif
 
     math OFFSET += BLOCK_SIZE
-
 
 while OFFSET < FILE_SIZE
 append #off

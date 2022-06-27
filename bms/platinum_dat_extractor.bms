@@ -5,6 +5,8 @@ set IS_FILTER long 1
 set IS_FILTER_BNK long 1
 set IS_FILTER_DAT long 1
 set IS_FILTER_Z   long 1
+set IS_FILTER_CSV long 1
+set IS_FILTER_BXM long 1
 
 ###
 
@@ -68,6 +70,10 @@ for I = 0 < FILES
             set WRITE_FILE long 1
         elif IS_FILTER_Z   == 1 && TYPE == "z"
             set WRITE_FILE long 1
+        elif IS_FILTER_CSV == 1 && TYPE == "csv"
+            set WRITE_FILE long 1
+        elif IS_FILTER_BXM == 1 && TYPE == "bxm"
+            set WRITE_FILE long 1
         endif
     endif
 
@@ -85,4 +91,3 @@ for I = 0 < FILES
         
     endif
 next I
-

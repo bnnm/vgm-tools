@@ -1,0 +1,248 @@
+# MUS.BIN extractor from Fuuraiki 1/2 (PS2) [developed by FOG] by bnnm
+# decryption algorithm by punk7890
+
+open FDSE "MUS.BIN" 0
+open FDSE "MUS.header" 9
+
+idstring "FRK2"
+
+callfunction MEM_DECRYPT_INIT 1
+
+# decrypt TOC at MEMORY_FILE9
+#todo unknown TOC decryption, make MUS.header
+# (load in emu, get memdump, find "BGM01.AWA" table, entries start with 0x0c)
+
+get HSIZE asize 9
+xmath FILES " HSIZE / 0x20 "
+print "FILES %FILES%, %HSIZE%"
+goto 0x20 9
+for I = 0 < FILES
+    get DUMMY long 9
+    get SIZE long 9
+    get OFFSET long 9
+    getdstring NAME 0x14 9
+
+    log MEMORY_FILE8 0 0
+    log MEMORY_FILE8 OFFSET SIZE
+    
+    #string NAME2 p= "%s.enc" NAME
+    #log NAME2 0x00 SIZE MEMORY_FILE8
+
+    callfunction AWA_DECRYPT 1
+    log NAME 0x00 SIZE MEMORY_FILE8
+    
+    exit()
+next I
+
+###
+
+startfunction MEM_DECRYPT_INIT
+    set MEMORY_FILE10 string "
+
+    short get_s8le(unsigned char* p) {
+        return (p[0]);
+    }
+    unsigned short get_u8le(unsigned char* p) {
+        return (p[0]);
+    }
+    unsigned int get_u32le(unsigned char* p) {
+        return (p[0]) | (p[1]<<8) | (p[2]<<16) | (p[3]<<24);
+    }
+
+    void put_u8le(unsigned char* buf, unsigned int v) {
+        buf[0] = (v >> 0)  & 0xFF;
+    }
+    void put_u32le(unsigned char* buf, unsigned int v) {
+        buf[0] = (v >> 0)  & 0xFF;
+        buf[1] = (v >> 8)  & 0xFF;
+        buf[2] = (v >> 16) & 0xFF;
+        buf[3] = (v >> 24) & 0xFF;
+    }
+
+    void decrypt_toc(unsigned char* hdr, unsigned char* tbl, unsigned int tbl_size, int files) {
+        /*
+        int hdr_o = 0x18;
+        int tbl_o = tbl_size - hdr_o - 0x04;
+        int max_o = 0x18 + files * 0x18;
+
+        while (hdr_o < max_o) {
+            unsigned int xor, val;
+            xor = get_u32le(tbl + tbl_o);
+            val = get_u32le(hdr + hdr_o);
+            val ^= xor;
+            
+            put_u32le(hdr + hdr_o, val);
+            hdr_o += 0x04;
+            tbl_o -= 0x04;
+        }
+        */
+    }
+
+    void decrypt_awa(unsigned char* buf, unsigned int offset, unsigned int size, char* name) {
+        unsigned int pos = 0x00;
+        unsigned int a0, a1, a2, a3, v0, v1, v2, t0, t1, t2, t3, t4, t5, at, test;
+
+        /* decrypt header */
+        v0 = 0;                                 //strlen (returns size of stream name in v0)
+        while (name[v0] != '\0') {
+            v0++;
+        }
+        //v0 = strlen(name);
+
+        a2 = size;                              //load size of stream in a2 //0x88BCE0
+        a0 = offset;                            //load offset to stream in a0 //0x800
+        a1 = v0 + 1;                            //a1=$0000000A (v0=size of stream name + 1 into a1)
+        v1 = a1 + 3;                            //v1=$0000000D (add 0x3 to a1, result in v1)
+        t0 = get_u32le(buf + 0x00);             //t0=$41CCD7C6 (load first 4 bytes of header into t0)
+        at = 1;                                 //at=$1
+        a2 = ~(a2 | 0) & 0xFFFFFFFF;            //a2=$FF77431F (nor a2 (size of stream) by 0 into a2)
+        a0 = a0 + a2;                           //a0=$FF774B1F (add start offset loc a0 + a2 together=a0)
+        a2 = v1 * a0;                           //a2=$F90ED093 (multiply v1 and a0 = a2)
+        a3 = 0;                                 //a3=0 (clear a3)
+        v1 = a2 << 3;                           //v1=$C8768498 (shift left logical a2 by 3 = v1)
+        a0 = v1 - a2;                           //a0=$CF67B405 (subtract v1 - a2 = a0)
+        v1 = v1 + a2;                           //v1=$C185552B (add v1 + a2 = v1)
+        v1 = v1 << 1;                           //v1=$830AAA56 (shift left logical v1 by 1 = v1)
+        t4 = v1 + a2;                           //t4=$7C197AE9 (add v1 + a2 = t4)
+        v1 = a0 << 2;                           //v1=$3D9ED014 (shift left logical a0 by 2 = v1)
+        v1 = v1 + a2;                           //v1=$36ADA0A7 (add v1 + a2 = v1)
+        v1 = t0 ^ v1;                           //v1=$77617761 (xor t0 and v1 = v1)
+        put_u32le(buf + 0x00, v1);              //v1=$77617761 (store v1 over first 0x4 of header)
+        v1 = a2 << 1;                           //v1=$F21DA126 (shift left logical a2 by 1 = v1)
+        v1 = v1 + a2;                           //v1=$EB2C71B9 (add v1 + a2 = v1)
+        t0 = v1 << 3;                           //t0=$59638DC8 (shift left logical v1 by 3 = t0)
+        t5 = t0 - a2;                           //t5=$6054BD35 (subtract t0 - a2 = t5)
+
+        t1 = get_u32le(buf + 0x04);             //t1=$6456BD35 (load next 0x4 of header into t1)
+        t0 = a2 << 4;                           //t0=$90ED0930 (shift left logical a2 by 4 = t0)
+        t3 = t0 + a2;                           //t3=$89FBD9C3 (add t0 + a2 = t3)
+        t0 = a2 << 2;                           //t0=$E43B424C (shift left logical a2 by 2 = t0)
+        t2 = t0 + a2;                           //t2=$DD4A12DF (add t0 + a2 = t2)
+        t0 = t2 << 1;                           //t0=$BA9425BE (shift left logical t2 by 1 = t0)
+        t1 = t1 ^ t5;                           //t1=$04020000 (xor t1 and t5 = t1)
+        put_u32le(buf + 0x04, t1);              //t1=$04020000 (store t1 at 0x4 in header)
+        t1 = t0 + a2;                           //t1=$B3A2F651 (add t0 + a2 = t1)
+
+        t0 = get_u32le(buf + 0x08);             //t0=$7C19D6AD (load from 0x8 in header = t0)
+        t0 = t0 ^ t4;                           //t0=$0000AC44 (xor to and t4 = t0)
+        put_u32le(buf + 0x08, t0);              //t0=$0000AC44 (store t0 at 0x8 in header)
+
+        t0 = get_u32le(buf + 0x0c);             //t0=$89FBD9C3 (load from 0xC in header = t0)
+        t0 = t0 ^ t3;                           //t0=$00000000 (xor t0 and t3 = t0)
+        put_u32le(buf + 0x0c, t0);              //t0=$00000000 (store t0 at 0xC in header)
+
+        t3 = 0x01DF5E76;                        //(key string? Different per game?)
+        t0 = get_u32le(buf + 0x10);             //t0=$8000B932 (load from 0x10 in header = t0)
+        t3 = a2 * t3;                           //t3=$80771DC2 (multiply a2 and t3 = t3)
+        t0 = t0 ^ t3;                           //t0=$0077A4F0 (xor t0 and t3 = t0)
+        put_u32le(buf + 0x10, t0);              //t0=$0077A4F0 (store t0 at 0x10 in header)
+
+        t0 = get_u32le(buf + 0x14);             //t0=$B32A4A91 (load from 0x14 in header = t0)
+        t0 = t0 ^ t1;                           //t0=$0088BCC0 (xor t0 and t1 = t0)
+        put_u32le(buf + 0x14, t0);              //t0=$0088BCC0 (store t0 at 0x14 in header)
+
+        t0 = get_u32le(buf + 0x18);             //t0=$CF67B405 (load from 0x18 in header = t0)
+        a0 = t0 ^ a0;                           //a0=$00000000 (xor t0 and a0 = a0)
+        put_u32le(buf + 0x18, a0);              //a0=$00000000 (store a0 at 0x18 in header)
+
+        a0 = get_u32le(buf + 0x1c);             //a0=$DD4A12DF (load from 0x1C in header = a0)
+        a0 = a0 ^ t2;                           //a0=$00000000 (xor a0 and t2 = a0)
+        put_u32le(buf + 0x1c, a0);              //a0=$00000000 (store a0 at 0x1C in header)
+
+        a0 = get_u32le(buf + 0x20);             //a0=$EB2C71A5 (load from 0x20 in header = a0)
+        v1 = a0 ^ v1;                           //v1=$0000001C (xor a0 and v1 = v1)
+        put_u32le(buf + 0x20, v1);              //v1=$0000001C (store v1 at 0x20 in header)
+
+        v1 = get_u32le(buf + 0x24);             //v1=$F90ED093 (load from 0x24 in header = v1)
+        v1 = v1 ^ a2;                           //v1=$00000000 (xor v1 and a2 = v1)
+        //v __002603a8 (end routine if AT = zero)
+        put_u32le(buf + 0x24, v1);              //v1=$00000000 (store v1 at 0x24 in header)
+	
+
+        /* decrypt random bytes based on name */
+        for (int i = 0; i < 0x10; i++) {
+            a0 = name[i];       //a0=$00000042 (load first byte of song name = a0)
+            a0 = a0 - a2;       //a0=$06F12FAF (subtract a0 - a2 = a0)
+            t1 = a0 & 0x00FF;   //t1=$000000AF (AND a0 by 0x00FF = t1)
+            t0 = t1 + 0x04;     //t0=$000000B3 (add t1 by 0x4 into t0)
+            a0 = t0 << 1;       //a0=$00000166 (shift left logical t0 by 1 = a0)
+            a0 = a0 + t0;       //a0=$00000219 (add a0 + t0 = a0)
+            a0 = a0 << 2;       //a0=$00000864 (shift left logical a0 by 2 = a0)
+            v1 = size;          //v1=$0088BCE0 (get size of stream = v1)
+            a0 = a0 + t0;       //a0=$00000917 (add a0 + t0 = a0)
+
+            at = (a0 < v1) ? 1 : 0; //at=$1 (set AT to 0x1 if a0 is less than v1)
+            if (at == 0) {
+                //v __0026035c (go to loc_0026035C if AT is 0 and take delay slot)
+                a0 = t1 + 0x04;         //(delay slot: don't use this op code if above branch WASN'T taken. Adds + 0x4 from t1 into a0)
+            }
+            else {
+                t0 = a0; //+ offset             //t0=start of song + a0 value (add s1 + a0 = t0 (dump loc 01EAD8AF))
+                v1 = ~(t1 | 0) & 0xFFFFFFFF;    //v1=$FFFFFF50 (nor t1 by zero = v1)
+                a0 = v1 & 0x00FF;               //a0=$00000050 (AND v1 by 0x00FF = a0)
+                v1 = get_u8le(buf + t0);        //v1=$00000050 (load byte from 0x917 in song data)
+
+                v1 = v1 ^ a0;                   //v1=$00000000 (xor v1 and a0 = v1)
+                put_u8le(buf + t0, v1);         //v1=$00000000 (store byte over encrypted byte)
+                a0 = t1 + 0x04;                 //a0=$000000B3 (add t1 + 0x4 = a0)
+            }
+            //loc_0026035C
+
+            v1 = a0 << 2;   //v1=$000002CC (shift left logical a0 by 2 = v1)
+            v1 = v1 + a0;   //v1=$0000037F (add v1 + a0 = v1)
+            v1 = v1 << 1;   //v1=$000006FE (shift left logical v1 by 1 = v1)
+            a0 = v1 + a0;   //a0=$000007B1 (add v1 + a0 = a0)
+            v1 = size;      //v1=$0088BCE0 (get size of stream = v1)
+
+            at = (a0 < v1) ? 1 : 0; //at=$1 (set AT to 0x1 if a0 is less than v1)
+            if (at == 0) {
+                //v __0026039c (go to loc_0026039c if AT is 0 and take delay slot)
+                a3 = a3 + 0x01;         //(delay slot: don't use this op code if above branch WASN'T taken. Adds + 0x1 from a3 into a3)
+            }
+            else {
+                t0 = a0; //+ offset             //t0=start of song + a0 value (add s1 + a0 = t0 (dump loc 01EAD749))
+                v1 = ~(t1 | 0) & 0xFFFFFFFF;    //v1=$FFFFFF50 (nor t1 by zero = v1)
+                a0 = v1 & 0x00FF;               //a0=$00000050 (AND v1 by 0x00FF = a0)
+                v1 = get_u8le(buf + t0);        //v1=$00000050 (load byte from 0x7B1 in song data)
+
+                v1 = v1 ^ a0;                   //v1=$00000000 (xor v1 and a0 = v1)
+                put_u8le(buf + t0, v1);         //v1=$00000000 (store byte over encrypted byte)
+                a3 = a3 + 0x01;                 //a3=number of passes complete
+            }
+
+            v1 = a3 < a1 ? 1 : 0;       //v1=$1 (set v1 to 0x1 if a3 is less than a1)
+            //if (v1 == 0)              //^ __00260310 (repeat and jump to __00260310 if v1 was not zero)
+            //    break;
+            if (name[i] == '\0') //?
+                break;
+        }
+
+
+        /* decrypt body */
+        pos = 0x20;
+        while (pos < size) {
+            buf[pos+0x00] ^= 0x1C;
+            buf[pos+0x01]  = 0;
+            pos += 0x10;
+        }
+    }
+    "
+endfunction
+
+startfunction TOC_DECRYPT
+    # C decryption
+    goto 0 MEMORY_FILE8
+    goto 0 MEMORY_FILE9
+    #calldll MEMORY_FILE10 "decrypt_toc" "tcc" RET MEMORY_FILE9 MEMORY_FILE8 TBL_SIZE FILES
+endfunction
+
+startfunction AWA_DECRYPT
+    #    math OFFSET = MEM_DECRYPT_ARG1
+    #    math SIZE = MEM_DECRYPT_ARG2
+    #
+
+    # C decryption
+    goto 0 MEMORY_FILE8
+    calldll MEMORY_FILE10 "decrypt_awa" "tcc" RET MEMORY_FILE8 OFFSET SIZE NAME
+endfunction
+
