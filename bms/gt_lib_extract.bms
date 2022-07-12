@@ -33,25 +33,37 @@ for I = 0 < FILES
   goto OFFSET
   
   get NAME1_OFFSET long #sxd1
-  get UNK_TYPE long #always 0x03
+  get TYPE long
   get NAME2_OFFSET long #sxd2
   get DUMMY long
   get DATA_OFFSET long
   get NAME3_OFFSET long #title
   get NAME4_OFFSET long #artist
   
-  if UNK_TYPE != 0x03
+  if TYPE == 0x0003 #gt sport
+      string EXT1 = ".sxd1"
+
+      goto DATA_OFFSET
+      get DUMMY long #id
+      get DUMMY long #ver
+      get DATA_SIZE long
+
+  elif TYPE == 0x0004 || TYPE == 0x0104 #gt7
+      string EXT1 = ".szd1"
+
+      goto DATA_OFFSET
+      get DUMMY long #id
+      get DATA_SIZE long
+
+  else
       print "unknown type at %OFFSET|h%"
+      exit()
   endif
 
-  goto DATA_OFFSET
-  get DUMMY long #id
-  get DUMMY long #ver
-  get DATA_SIZE long #id
   
   goto NAME1_OFFSET
   get DATA_NAME string
-  string DATA_NAME += ".sxd1"
+  string DATA_NAME += EXT1
 
   log DATA_NAME DATA_OFFSET DATA_SIZE
 
