@@ -1,0 +1,113 @@
+# ABBP extractor from Final Fantasy Agito (Android) by bnnm
+# decryption from Assembly-CSharp.dll > ExternalResourceUtility > LoadList
+
+# Non = 0,
+# BitFlip = 10,
+# XorWithChangeSeed = 11,
+# Rijndael = 100
+set ALGO long 11
+
+
+idstring "ABBP"
+get VERSION long #always 1
+get UNKNOWN longlong #unused (crc?)
+get FILE_SIZE longlong
+get START_OFFSET longlong #first DATA
+get STREAM_SIZE longlong
+getdstring UNKNOWN 0x10 #hash?
+get DUMMY longlong
+savepos CURRENT long
+math START_OFFSET += CURRENT
+
+callfunction MEM_DECRYPT_INIT 1
+
+# read/decrypt TOC
+string NAME = ""
+callfunction PARSE_DATA_CHUNK 1
+
+goto 0 MEMORY_FILE9
+getdstring CRC 0x10 MEMORY_FILE8
+get FILES long MEMORY_FILE8
+
+for I = 0 < FILES
+    get DUMMY long MEMORY_FILE8 #unused
+    get ENTRY_OFFSET longlong MEMORY_FILE8
+    get ENTRY_SIZE long MEMORY_FILE8
+    get NAME_SIZE long MEMORY_FILE8
+    getdstring NAME NAME_SIZE MEMORY_FILE8
+
+    math ENTRY_OFFSET += START_OFFSET
+    
+    string NAME += ".bytes" #all seem unity files
+
+    goto ENTRY_OFFSET
+    # size is implicit
+    callfunction PARSE_DATA_CHUNK 1
+
+next I
+
+###
+
+startfunction MEM_DECRYPT_INIT
+    set MEMORY_FILE10 string "
+
+    void decrypt_xor(unsigned char* buf, unsigned int offset, unsigned int size, unsigned char* key) {
+        unsigned char xor = key[0]; //rest is unused
+
+        for (int i = 0; i < size; i++) {
+            xor = (unsigned char)(xor * 5 + 1);
+            buf[offset + i] ^= xor;
+        }
+    }
+
+    "
+endfunction
+
+startfunction PARSE_DATA_CHUNK
+    idstring "DATA"
+    get DATA_VERSION long #always 1
+    get DATA_SIZE long
+    get COMPRESSION byte
+    getdstring DUMMY 0x0B #null?
+    getdstring KEY 0x08 #for AES and XOR
+    # (unsure if any files use AES though, it's controlled by code depending on loaded file)
+
+    if ALGO == 11
+        # prepare DATA buffer
+        savepos CURRENT
+        log MEMORY_FILE9 CURRENT DATA_SIZE
+
+        # C decryption
+        goto 0 MEMORY_FILE9
+        calldll MEMORY_FILE10 "decrypt_xor" "tcc" RET MEMORY_FILE9 0 DATA_SIZE KEY
+    else
+        print "algo not implemented"
+        exit
+    endif
+
+    # first 0x8 bytes of a file are the checksum, that is usually MD5 (depending on checktype, also per file):
+    # Non = 0,
+	# Sum = 10,
+	# Md5 = 100,
+	# Sha256 = 110
+
+    if NAME != ""
+        # only 2 compression defined in original code
+        if COMPRESSION == 10 #untested
+            ComType ALGO deflate
+            print "untested compression"
+            exit
+        elif COMPRESSION == 0
+            math DATA_SIZE -= 0x10 #remove crc
+            log NAME 0x10 DATA_SIZE MEMORY_FILE9
+        else
+            print "unknown compression"
+            exit
+        endif
+    endif
+
+    # copy TOC
+    if NAME == "" || NAME == "TOC"
+        log MEMORY_FILE8 0 DATA_SIZE MEMORY_FILE9
+    endif
+endfunction

@@ -1,0 +1,123 @@
+# Tecmo's IMG_DB.BIN / GR6.DAT unpacker
+# based on the original "project_zero.bms" by aluigi
+
+# see ELF's InitSystemON > cddatInit (games often have full symbols = easy IDA-ing)
+
+set IS_BD_HD long 0
+set EXISTS long 0
+set EXISTS2 long 0
+
+# Zero (JP)
+if EXISTS == 0
+    math CD_DAT_TBL     = 0x0
+   #math FILE_EXT_TBL   = 0x0
+    math FILES          = 1850
+    math FILE_DAT       = 0x580348 #?
+
+    open FDSE "IMG_HD.BIN" 1 EXISTS
+    open FDSE "SLPS_250.74" 2 EXISTS2
+
+    set IS_BD_HD long 1
+endif
+
+# Zero 2 (JP)
+if EXISTS == 0
+    math CD_DAT_TBL     = 0x1F35F8
+   #math FILE_EXT_TBL   = 0x1FFB00
+    math FILES          = 4203
+    math FILE_DAT       = 0 #?
+
+    open FDSE "SLPS_253.03" 1 EXISTS
+    #open FDSE "SLPS_253.03" 2 EXISTS2
+endif
+
+# Gallop Racer 2004 (US)
+if EXISTS == 0
+    math CD_DAT_TBL     = 0x2262D0
+   #math FILE_EXT_TBL   = 0x22F2E8
+    math FILES          = 3074
+    math FILE_DAT       = 0x9BA5C7
+
+    open FDSE "SLUS_210.31" 1 EXISTS
+    open FDSE "SLUS_210.31" 2 EXISTS2
+endif
+
+# Gallop Racer 2006 (US)
+# different format
+
+if EXISTS == 0
+    print "Error: your version of the game is not supported"
+    cleanexit
+endif
+
+#--------------------------------------------------------------
+
+# read names in a long string like: "name:index,name:index,...."
+if EXISTS2 == 1
+    putarray 0 FILES 0
+    goto FILE_DAT 2
+    for I = 0 < FILES
+
+        # check line end (cuts every now and then to avoid giant lines)
+        savepos CURRENT
+        get SEPARATOR byte 2
+        if SEPARATOR == 0x5c #"\"
+            get DUMMY byte 2 #0x00
+        else
+            goto -1 2 SEEK_CUR
+        endif
+
+
+        getct NAME string ':' 2
+        getct INDEX string ',' 2
+        set KEY long INDEX
+
+        # name is "blah_blah_ext". change to "blah_blah.ext"
+        string BASENAME = NAME
+        string EXTNAME = NAME
+        string BASENAME <= "_"
+        string BASENAME -= 1
+        string EXTNAME != "_"
+        string NAME p= "%s.%s" BASENAME EXTNAME
+
+        putarray 0 KEY NAME
+        #print "%NAME% %INDEX%, %KEY%, %I%"
+    next I
+endif
+
+goto CD_DAT_TBL 1
+for I = 0 < FILES
+    if IS_BD_HD == 1
+        get OFFSET long 1
+        get SIZE long 1
+
+        set FLAGS long 0
+        math OFFSET *= 0x800
+    else
+        get OFFSET long 1
+        get XSIZE long 1
+        get SIZE long 1
+    
+        xmath FLAGS "OFFSET & 3"
+        math OFFSET u>> 2
+        math OFFSET * 0x800
+    endif
+    
+    
+    getarray NAME 0 I
+    if NAME == 0
+        string NAME p "%08d." I
+    endif
+
+    if OFFSET > 0 && SIZE > 0
+        if FLAGS == 2 || FLAGS == 0
+            log NAME OFFSET SIZE
+        elif FLAGS == 3
+            string NAME p "compressed/%s" NAME
+            log NAME OFFSET SIZE
+            #clog "" OFFSET SIZE XSIZE
+        endif
+    endif
+next I
+
+print "\nUse the following script on the compressed files:\n  http://aluigi.org/bms/deless.bms"

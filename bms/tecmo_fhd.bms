@@ -1,0 +1,86 @@
+# Tecmo .fhd unpacker [Zero 3 (PS2), Tokobot (PSP), Tokobot Plus (PS2)]
+# reference: https://github.com/wmltogether/ZeroUnpacker
+
+set FILTER long 0 #audio only (varies between games, adjust below)
+
+      
+idstring "\x00\x44\x48\x46" #DHF
+get UNK long
+get FILE_SIZE long
+get FILES long
+
+get SIZES_OFFSET long
+get TYPES_OFFSET long
+get MSIZES_OFFSET long
+get NAMES_OFFSET long
+
+get OFFSETS_OFFSET long
+get DUMMY long #1?
+get DUMMY longlong #crc?
+
+
+set EXISTS long 0
+if EXISTS == 0
+    open FDDE BIN 1 EXISTS
+endif
+if EXISTS == 0
+    open FDSE "IMG_BD.BIN" 1 EXISTS
+endif
+if EXISTS == 0
+    print "unsupported combo"
+    cleanexit
+endif
+
+
+for I = 0 < FILES
+    xmath TEMP " SIZES_OFFSET + (I * 0x04) "
+    goto TEMP
+    get SIZE long
+
+    xmath TEMP " TYPES_OFFSET + I "
+    goto TEMP
+    get TYPE byte #seems to define file type, varies with to extension
+
+    xmath TEMP " MSIZES_OFFSET + (I * 0x04) "
+    goto TEMP
+    get MSIZE long #size uncompressed or in memory (may be set even for uncompressed files)
+
+    xmath TEMP " NAMES_OFFSET + (I * 0x08) "
+    goto TEMP
+    get DIR_OFFSET long
+    get NAME_OFFSET long
+
+    goto DIR_OFFSET
+    get DIRNAME string
+    goto NAME_OFFSET
+    get FILENAME string
+    string NAME p= "%s%s" DIRNAME FILENAME
+
+    # names start with ../../
+    string NAME R= "../" ""
+
+    xmath TEMP " OFFSETS_OFFSET + (I * 0x04) "
+    goto TEMP
+    get OFFSET long
+
+
+    set FILE_OK long 1
+    # 00=hxd, 01=at3, 1c=pss
+    #if FILTER == 1 
+    #    set FILE_OK long 0
+    #    if TYPE == 0x00 || TYPE == 0x01 || TYPE == 0x1c
+    #        set FILE_OK long 1
+    #    endif    
+    #endif
+    
+    if OFFSET == 0xffffffff || FILE_OK == 0
+        #print "%NAME%: %OFFSET|h% %SIZE|h% %MSIZE|h% %TYPE|h% DUMMY"
+    else
+        #print "%NAME%: %OFFSET|h% %SIZE|h% %MSIZE|h% %TYPE|h% "
+        math OFFSET *= 0x800
+
+        log NAME OFFSET SIZE 1
+    endif
+
+    
+next I
