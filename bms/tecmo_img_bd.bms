@@ -3,6 +3,7 @@
 
 # see ELF's InitSystemON > cddatInit (games often have full symbols = easy IDA-ing)
 
+set FIX_HXD long 0
 set IS_BD_HD long 0
 set EXISTS long 0
 set EXISTS2 long 0
@@ -17,7 +18,9 @@ if EXISTS == 0
     open FDSE "IMG_HD.BIN" 1 EXISTS
     open FDSE "SLPS_250.74" 2 EXISTS2
 
+    if EXISTS != 0
     set IS_BD_HD long 1
+    endif
 endif
 
 # Zero 2 (JP)
@@ -29,6 +32,7 @@ if EXISTS == 0
 
     open FDSE "SLPS_253.03" 1 EXISTS
     #open FDSE "SLPS_253.03" 2 EXISTS2
+    set EXISTS2 long 0
 endif
 
 # Gallop Racer 2004 (US)
@@ -43,7 +47,21 @@ if EXISTS == 0
 endif
 
 # Gallop Racer 2006 (US)
-# different format
+if EXISTS == 0
+    math CD_DAT_TBL     = 0x21FD60
+   #math FILE_EXT_TBL   = 0x226C88
+    math FILES          = 2371
+    math FILE_DAT       = 0
+
+    open FDSE "SLUS_213.93" 1 EXISTS
+    #open FDSE "SLUS_213.93" 2 EXISTS2
+    set EXISTS2 long 0
+
+    if EXISTS != 0
+    set FIX_HXD long 1
+    endif
+endif
+
 
 if EXISTS == 0
     print "Error: your version of the game is not supported"
@@ -53,8 +71,8 @@ endif
 #--------------------------------------------------------------
 
 # read names in a long string like: "name:index,name:index,...."
+putarray 0 FILES 0
 if EXISTS2 == 1
-    putarray 0 FILES 0
     goto FILE_DAT 2
     for I = 0 < FILES
 
@@ -103,10 +121,27 @@ for I = 0 < FILES
         math OFFSET * 0x800
     endif
     
+    string EXT = ""
+    math COUNT = I
+    if FIX_HXD != 0
+        savepos CURRENT
+        
+        goto OFFSET
+        get ID long
+        if ID == 0x48584400
+            math COUNT -= 1
+            string EXT = "hxd"
+        elif ID == 0x00000000
+            string EXT = "str" #not all but...
+        endif
+        
+        goto CURRENT
+    endif
     
     getarray NAME 0 I
-    if NAME == 0
-        string NAME p "%08d." I
+    print "name: %NAME%"
+    if NAME == 0 || NAME == ""
+        string NAME p "%08d.%s" COUNT EXT
     endif
 
     if OFFSET > 0 && SIZE > 0
