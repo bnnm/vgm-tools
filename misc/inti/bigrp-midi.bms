@@ -1,0 +1,47 @@
+# extracts midis from Inti Creates's .bigrp
+
+comtype zlib
+
+get HEAD_SIZE long 
+get ENTRY_SIZE long
+get STREAMS long
+
+#0x0c = Bloodstained COTM Vita/3DS, Mighty Gunvolt Burst PC, 0x10 = others
+if HEAD_SIZE != 0x0c && HEAD_SIZE != 0x10
+    print "unknown or encrypted bigrp"
+    exit
+endif
+
+
+get BASE_NAME basename
+
+goto HEAD_SIZE
+
+for I = 0 < STREAMS
+
+    savepos ENTRY_OFFSET
+    get HASH1 long
+    get HASH2 long
+    get CODEC long
+
+    if CODEC != 0x02
+        math ENTRY_OFFSET += ENTRY_SIZE
+        goto ENTRY_OFFSET
+        continue
+    endif
+
+    get DUMMY long #config
+    get OFFSET long
+    get SIZE long
+    #config
+    #config
+
+    math OFFSET += ENTRY_OFFSET
+    string NAME p= "%s_%02i.mid" BASE_NAME I 
+    log NAME OFFSET SIZE
+
+    math ENTRY_OFFSET += ENTRY_SIZE
+    goto ENTRY_OFFSET
+
+next I
+
