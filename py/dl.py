@@ -40,6 +40,7 @@ class Downloader(object):
         self.out = 'out/'
         self.debug = False
         self.name = None
+        self.filevar = None
 
         self._configs = {
             'out:': self._parse_out,
@@ -62,8 +63,9 @@ class Downloader(object):
             'headers:': self._parse_header,
 
             'debug:': self._parse_debug,
-            
+
             'name:': self._parse_name,
+            'filevar:': self._parse_filevar,
         }
 
     def _parse_threads(self, config):
@@ -76,13 +78,16 @@ class Downloader(object):
     def _parse_name(self, name):
         self.name = name
 
+    def _parse_filevar(self, filevar):
+        self.filevar = filevar
+
     def _parse_out(self, config):
         if config and not config.endswith('/'):
             config += '/'
         self.out = config
 
     def _parse_prefix(self, config):
-        if not config.endswith('/'):
+        if not config.endswith('/') and not '?' in config:
             config += '/'
         self.prefix = config
 
@@ -143,7 +148,7 @@ class Downloader(object):
                 url = self.prefix + url
             if self.suffix:
                 url = url + self.suffix
-        
+
         url = url.replace(' ', '%20')
 
         # ignore non-matching urls/names
@@ -175,13 +180,23 @@ class Downloader(object):
 
         if not path:
             path = 'index'
-            
+
         if self.out:
             path = self.out + path
 
-        # remove query string (may overwrite, add config to keep it?)
+        # remove query string
         if '?' in path:
-            path = path.split('?')[0]
+            path, query = path.split('?', 1)
+            if self.filevar: #use filename from query if set
+                vars = query.split('&')
+                for var in vars:
+                    key, val = var.split('=', 1)
+                    if key != self.filevar:
+                        continue
+                    if '/' in path: #include filevar in output path
+                        path = path[0:path.rfind('/')+1] + val
+                    else:
+                        path = val
 
         for rep in "*<>:|?\"":
             path = path.replace(rep, '_')
