@@ -1,6 +1,7 @@
-# renames unity .bytes and joins chunked files
+# joins chunked (file.ext-001, file.ext-002....) files and changes file.ext.bytes to file.ext
 import glob, os, re
 
+RENAME = False #don't rename by default since this script isn't very tested overall
 
 files = glob.glob('**/*.bytes', recursive=True)
 files.sort()
@@ -16,7 +17,12 @@ for file in files:
 
     if not re_end.match(base2):
         # removes bytes
-        os.rename(file, base1)
+        if RENAME:
+            os.rename(file, base1)
+        else:
+            with open(file, 'rb') as fi, open(base1, 'wb') as fo:
+                fo.write(fi.read())
+            
     else:
         # joins file-xxx.(ext) to single file
         with open(file, 'rb') as f:

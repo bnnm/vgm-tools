@@ -2,10 +2,12 @@
 
 import glob, hashlib, re, os
 
-
-
+TEST_SEMI = False
 def get_hash(file, semi=False):
     chunk = 0x10000
+
+    if semi and not TEST_SEMI:
+        return None
 
     hasher = hashlib.md5()
     with open(file, 'rb') as f:
