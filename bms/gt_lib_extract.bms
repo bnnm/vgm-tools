@@ -40,7 +40,7 @@ for I = 0 < FILES
   get NAME3_OFFSET long #title
   get NAME4_OFFSET long #artist
   
-  if TYPE == 0x0003 #gt sport
+  if TYPE == 0x0003 || TYPE == 0x0103 #gt sport
       string EXT1 = ".sxd1"
 
       goto DATA_OFFSET
