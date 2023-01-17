@@ -1,0 +1,182 @@
+# extracts audiostm.ast banks from Tiger Woods PGA series (X360/PS3)
+# - first use ctrl.bms on files that start with CTRL (often .xen/ps3)
+#   - also nbajamfire.bms on files that start with BGFA (often .ast), but needed for music but have banks
+# - find *.astr and *.astm, rename to audiostm.astr and audiostm.astm
+#   (usually in *loadonce.* or *startup.*; if there are multiple .astm, all should have same size and contents)
+# - put all 3 files together and run this file
+# - by default extracts all sections, change filter below if needed
+
+
+# bgm sections seem to be: 04_420f5f14 12_9e163ba8 13_8ba3db52
+# set 1 to extract only those
+math FILTER_AUDIO_SECTIONS = 0
+
+
+get BASE_NAME basename
+
+# .astm = header, .astr = memory .snr, ast = stream .sns
+open FDDE ASTM 0
+open FDDE ASTR 1
+open FDDE AST 2
+
+endian big
+
+#assumed
+get VER1 short 0
+get VER2 short 0
+if VER1 != 0x6
+    print "unknown version"
+    exit
+endif
+if VER2 != 0x25 && VER2 != 0x26 && VER2 != 0x54
+    print "unknown version (report and include .astm)"
+    exit
+endif
+
+# simple validation, astm/ast are just data other than this
+get ASTR_ASTSIZE long 0
+get ASTM_ASTSIZE long 1
+get AST_ASTSIZE long 2
+if ASTR_ASTSIZE != ASTM_ASTSIZE || ASTM_ASTSIZE != AST_ASTSIZE
+    print "astm/astr/ast don't match"
+    exit
+endif
+
+get SECTIONS long 0
+get AST_SIZE long 0 # without ~0x80 padding
+get ASTR_SIZE long 0
+if VER2 >= 0x54 #TODO adjust 
+    get UNK_SIZE long 0 #some max size? doesn't match any offset
+endif
+get LAST_SECTION_OFFSET long 0 #list of hashes/ids?
+
+for SECTION = 0 < SECTIONS
+    get SECTION_OFFSET long 0
+    savepos CURRENT 0
+    goto SECTION_OFFSET 0
+    callfunction EXTRACT_SECTION 1
+    goto CURRENT 0
+next SECTION
+
+startfunction EXTRACT_SECTION
+    get SECTION_HASH long 0
+    get FILES_FROM short 0
+    get FILES_MAX short 0
+    get UNK long 0
+    get SECTION_NUM long 0
+    
+    if FILTER_AUDIO_SECTIONS == 0 || (SECTION_HASH == 0x420f5f14 || SECTION_HASH == 0x420f5f14 || SECTION_HASH == 0x420f5f14)
+
+    #print "%SECTION%: %SECTION_HASH|h% %FILES_FROM|h% %FILES_MAX|h% %UNK|h% %SECTION_NUM|h%"
+    for I = 0 < FILES_MAX long
+        get AST_OFFSET long
+        get ASTR_OFFSET long
+        if VER2 >= 0x54 #TODO adjust 
+            get UNK_VALUE long 0 # always null?
+        endif
+        #print "   %AST_OFFSET|h% %ASTR_OFFSET|h%"
+
+        endian save CURRENT_ENDIAN
+        endian big
+
+        string NAME p= "%s_%02i_%08x_%05i.snr" BASE_NAME SECTION_NUM SECTION_HASH I
+        callfunction EXTRACT_SNR 1
+
+        string NAME p= "%s_%02i_%08x_%05i.sns" BASE_NAME SECTION_NUM SECTION_HASH I
+        callfunction EXTRACT_SNS 1
+        
+        endian set CURRENT_ENDIAN
+    next I
+    
+    endif
+endfunction
+
+startfunction EXTRACT_SNR
+    log MEMORY_FILE 0 0
+    goto ASTR_OFFSET 1
+    
+    get HEADER1 long 1
+    get HEADER2 long 1
+    math HEADER_SIZE = 0x08
+
+    xmath TYPE "(HEADER2 >> 30) & 0x03"
+    xmath LOOP "(HEADER2 >> 29) & 0x01"
+
+    if LOOP != 0
+        get LOOP_START long 1
+        math HEADER_SIZE += 0x04
+    endif
+    
+    if TYPE == 0    #ram (not possible?)
+        print "ram sound (report and include .astm+.astr) %NAME% - %ASTR_OFFSET|h%"
+        exit
+    endif
+
+    if TYPE == 1    #streams
+        if LOOP != 0   
+            print "stream sound loop (report include .astm+.astr) %NAME% - %ASTR_OFFSET|h%"
+            exit
+
+            get LOOP_OFFSET long 1
+            math HEADER_SIZE += 0x04
+        endif
+    endif
+
+    if TYPE == 2    #gigasample (common)
+        get PREFETCH_SAMPLES long 1
+        math HEADER_SIZE += 0x04
+        
+        if LOOP != 0 #&& LOOP_START >= PREFETCH_SAMPLES
+            print "looped prefetch (report include .astm+.astr) %NAME% - %ASTR_OFFSET|h%"
+            exit
+
+            # not sure how many blocks
+            get LOOP_OFFSET long 1
+            math HEADER_SIZE += 0x04
+        endif
+    endif
+
+    if TYPE == 2  #gigasample has a single block (more on loop)
+        get BLOCK_INFO long 1
+
+        xmath BLOCK_SIZE " BLOCK_INFO & 0x00FFFFFF"
+        xmath BLOCK_FLAG " BLOCK_INFO & 0xFF000000"
+
+        math HEADER_SIZE += BLOCK_SIZE
+        
+        # not always set
+        #if BLOCK_FLAG != 0 #0x80000000
+        #    break
+        #endif
+
+        append
+    endif
+
+    log NAME ASTR_OFFSET HEADER_SIZE 1
+
+endfunction
+
+startfunction EXTRACT_SNS
+    log MEMORY_FILE 0 0
+    math BLOCK_OFFSET = AST_OFFSET
+
+    append
+    for
+        goto BLOCK_OFFSET 2
+        get BLOCK_INFO long 2
+        #print "O=%BLOCK_OFFSET|h% s=%BLOCK_INFO|h%"
+        
+        xmath BLOCK_SIZE " BLOCK_INFO & 0x00FFFFFF"
+        xmath BLOCK_FLAG " BLOCK_INFO & 0xFF000000"
+        log MEMORY_FILE BLOCK_OFFSET BLOCK_SIZE 2
+        math BLOCK_OFFSET += BLOCK_SIZE
+        
+        if BLOCK_FLAG != 0 #0x80000000
+            break
+        endif
+    next
+    append
+
+    get SIZE asize MEMORY_FILE
+    log NAME 0 SIZE MEMORY_FILE
+endfunction

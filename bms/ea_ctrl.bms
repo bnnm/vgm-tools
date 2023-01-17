@@ -1,0 +1,96 @@
+# extracts .xen/ps3 files from Tiger Woods PGA series (X360/PS3)
+endian big
+
+get BASE_NAME basename
+get FILE_SIZE asize
+
+idstring "CTRL"
+get START long
+
+log MEMORY_FILE 0 0
+math CURR_OFFSET = 0
+math CURR_I = 0
+math CURR_SIZE = 0
+string CURR_EXT = "unk"
+
+
+for CURRENT = START < FILE_SIZE
+    goto CURRENT
+    #print "O=%CURRENT|h%, %FILE_SIZE|h%"
+
+    get CHUNK_ID long
+    get CHUNK_SIZE long
+    get DUMMY long
+    get DUMMY long
+
+    # ignore filler chunks
+    if CHUNK_ID == 0x46494C4C #FILL
+        math CURRENT += CHUNK_SIZE 
+        continue
+    endif
+
+    if CHUNK_ID != 0x53484F43 #SHOC
+        print "unknown chunk at %CURRENT|h%"
+        exit
+    endif
+    
+    # SHOC chunk has a subtype
+    get SUBCHUNK_ID long
+    if   SUBCHUNK_ID == 0x53484452 #SHDR
+        savepos CURR_OFFSET
+        math CURR_OFFSET -= 0x14
+    
+        # save previous file first if needed
+        callfunction EXTRACT_FILE 1
+    
+        #idstring "SHDR"
+        get CURR_UNK long #seen 0/1/2...
+        getdstring CURR_EXT 0x04
+        get CURR_HASH long #not always
+        get CURR_SIZE long
+        #print "U=%CURR_UNK|h%, h=%CURR_HASH|h%, s=%CURR_SIZE|h%"
+        
+    elif SUBCHUNK_ID == 0x5A646174 #Zdat
+        get ZDAT_SIZE long
+        savepos OFFSET
+
+        comtype zlib
+
+        append
+        log MEMORY_FILE OFFSET ZDAT_SIZE
+        append
+
+    elif SUBCHUNK_ID == 0x53444154 #SDAT
+        comtype copy
+
+        savepos OFFSET
+
+        append
+        log MEMORY_FILE OFFSET CURR_SIZE
+        append
+    else
+        print "unknown chunk at %CURRENT|h%"
+        exit
+    endif 
+
+    math CURRENT += CHUNK_SIZE    
+next
+
+# last file
+callfunction EXTRACT_FILE 1
+
+startfunction EXTRACT_FILE
+    # save previous file first if needed
+    if CURR_SIZE > 0
+        get ZSIZE asize MEMORY_FILE
+        string NAME p= "%s_%04i.%s" BASE_NAME CURR_I CURR_EXT
+
+        #print "%NAME%: O=%CURR_OFFSET|h% Z=%ZSIZE|h% S=%CURR_SIZE|h%"
+        clog NAME 0 ZSIZE CURR_SIZE MEMORY_FILE
+
+        math CURR_I += 1
+        log MEMORY_FILE 0 0
+        
+        math CURR_SIZE = 0
+    endif
+endfunction

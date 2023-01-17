@@ -1,0 +1,43 @@
+# LEGO Batman 2 - DC Super Heroes Wii demuxer
+
+get FILE_SIZE asize
+log MEMORY_FILE 0 0x28
+set OFFSET long 0x28
+
+append #on
+do 
+    goto OFFSET
+
+    endian big
+    get BLOCK_ID long
+    endian little
+    get BLOCK_SIZE long
+    math BLOCK_SIZE += 0x08
+
+    if BLOCK_ID == 0
+        break
+    endif
+
+    # accept standard SCHl
+    if BLOCK_ID == 0x464D4100 #"FMA\0"
+        log MEMORY_FILE OFFSET BLOCK_SIZE
+    endif
+
+    math OFFSET += BLOCK_SIZE
+
+while OFFSET < FILE_SIZE
+append #off
+
+
+get BASE_NAME basename
+get EXT extension
+string NAME p= "%s.audio.%s.vgmstream" BASE_NAME EXT
+
+
+get SIZE asize MEMORY_FILE
+if SIZE == 0
+  print "File doesn't contain audio"
+  cleanexit
+endif
+
+log NAME 0 SIZE MEMORY_FILE
