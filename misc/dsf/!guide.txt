@@ -1,0 +1,49 @@
+dc/naomi/atomiswave dump mini guide
+
+- get file dump
+  - file has chd: extract with chdman.exe (found in mame release)
+     chdman.exe extractcd -i gdl-0012.chd -o gdl-0012.gdi 
+     * creates a .gdi for vgmtoolbox
+  - file has cue (redump): may need to convert to first (try gdidrop)
+  - file has .gdi and has 4 tracks: atomiswave conversion, 
+    - use atomiswave.bms on track03 instead to dump files from it
+  - Naomi has a big .BIN with all data, extract
+    - decrypt big .BIN like: DEScrypt.exe <key> <file>  //2370D3EFC19EB55E = cleopatra fortune plus
+    - will create a .BIN.dat > use dsf_ext.py
+
+- use some ISO tool (vgmtoolbox/etc) to open dump (.cue or .gdi)
+  - if only shows very few files, probably it's not reading filesystem correctly
+  - DC dumps usually have a few separate tracks, track03 has main game but filesystem is modified
+  - atomiswave roms are encrypted, must be decrypted first (AW>DC conversions pre-decrypt them)
+
+- find files in the dump and extract
+  .DRV: standard driver
+  .MLT big: has all data together, for dsf_make.py
+  .MLT small, .MSB, .MPB, .MDB, .FBP, FOB, .OSB: separate data, for mlt_make.py
+  .ADX, .p16, .p04: streamed (for the later 2 use txth + PCM16/AICA)
+  - no files/Naomi file: use dsf_ext.py to get sequence data (also vgmtoolbox for ADX)
+
+- run .py tools depending on the files you have 
+  * tools can be run as-is (will try to autoguess data based on filenames on dir)
+  * also drag and drop files
+  * tools need bin2psf.exe and psfpoint.exe nearby
+
+- dsf_ext.py: extracts from .BIN (mainly naomi w/o filesystem) known DSF stuff (MLT, etc)
+  - use only if you couldn't extract from the filesystems (as files won't be named = harder to match)
+- mlt_make.py: mixes .MSB (midi) + .MPB (samples) into new .MLT
+  * by default tries various combos but may need to specify manually files (Drag and drop)
+    * ST01.MSB + ST01.MPB, ST02.MSB + ST02.MPB, ... (auto, names match)
+    * ST01_SQ.MSB + ST01_PG.MPB, ST02_SQ.MSB + ST02_PG.MPB,  (manual, names don't match)
+    * JOJO.MSB + PA01.MPB, JOJO.MSB + PA02.MPB, ... (auto, if there is only a single .MSB and many .MPB)
+      * in this case of "same MSB for all files", need to call with correct track (can't detect):
+        dsf_make.py PA01.MLT -t 0, dsf_make.py PA02.MLT -t 1, .... 
+- dsf_make.py: takes full .MLT + .DRV and makes .DSF/MINIDSF
+  - can make dsf from mixed MLT, but needs to set -t 0 (since bank is a fake mix)
+  - doesn't support all driver versions
+  - if volume is too low try increasing it with -v 128 [0..255]
+- dsf_autotimer.py: takes .DSF/MINIDSF and auto-times them if possible based on internal sequence info
+
+
+naomi keys:
+ http://members.iinet.net.au/~lantra9jp1_nbn/gurudumps/naomi/index.html
+ http://mameitalia.net/wiki/index.php/Naomi_-_Chihiro_-_Triforce

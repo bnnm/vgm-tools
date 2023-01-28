@@ -1,0 +1,36 @@
+# atomiswave filesystem extract
+
+endian big
+get ID long
+if ID == 0x00FFFFFF
+    print "can't handle .BIN files, convert to .ISO first"
+    exit
+endif
+
+FindLoc START string "G1ROM FILESYSTEM" 0 ""
+if OFFSET == ""
+    print "couldn't find atomiswave filesystem marker"
+    exit
+endif
+
+endian little
+
+goto START
+getdstring DUMMY 0x10
+get ENTRIES long
+getdstring DUMMY 0x2c
+
+print "start %START|h%, %ENTRIES%"
+
+for I = 0 < ENTRIES 
+    get DUMMY long
+    get DUMMY long
+    get OFFSET long
+    get SIZE long
+    getdstring NAME 0x30
+    
+    if OFFSET != 0 # entry "." (header) and ".." (nothing)
+        math OFFSET += START
+        log NAME OFFSET SIZE
+    endif
+next I
