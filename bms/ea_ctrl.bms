@@ -1,5 +1,7 @@
-# extracts .xen/ps3 files from Tiger Woods PGA series (X360/PS3)
+# extracts .xen/ps3/ps2 files from Tiger Woods PGA series (X360/PS3/PS2)
 endian big
+
+math IS_PS2 = 1 #0x2 chunks have extra stuff
 
 get BASE_NAME basename
 get FILE_SIZE asize
@@ -12,7 +14,7 @@ math CURR_OFFSET = 0
 math CURR_I = 0
 math CURR_SIZE = 0
 string CURR_EXT = "unk"
-
+math CURR_Z = 0
 
 for CURRENT = START < FILE_SIZE
     goto CURRENT
@@ -24,13 +26,14 @@ for CURRENT = START < FILE_SIZE
     get DUMMY long
 
     # ignore filler chunks
-    if CHUNK_ID == 0x46494C4C #FILL
+    if CHUNK_ID == 0x46494C4C || CHUNK_ID == 0x50414444 #FILL/PADD
         math CURRENT += CHUNK_SIZE 
         continue
     endif
 
-    if CHUNK_ID != 0x53484F43 #SHOC
-        print "unknown chunk at %CURRENT|h%"
+
+    if CHUNK_ID != 0x53484F43 && CHUNK_ID != 0x534F4E4F #SHOC/SONO
+        print "SHOC chunk not found at %CURRENT|h%: %CHUNK_ID|h%"
         exit
     endif
     
@@ -42,17 +45,24 @@ for CURRENT = START < FILE_SIZE
     
         # save previous file first if needed
         callfunction EXTRACT_FILE 1
-    
-        #idstring "SHDR"
+
         get CURR_UNK long #seen 0/1/2...
         getdstring CURR_EXT 0x04
+        if IS_PS2 == 1
+            string CURR_EXT r CURR_EXT
+        endif
+        
         get CURR_HASH long #not always
         get CURR_SIZE long
-        #print "U=%CURR_UNK|h%, h=%CURR_HASH|h%, s=%CURR_SIZE|h%"
+        
+        #print "%CURR_EXT%: U=%CURR_UNK|h%, h=%CURR_HASH|h%, s=%CURR_SIZE|h%"
         
     elif SUBCHUNK_ID == 0x5A646174 #Zdat
         get ZDAT_SIZE long
         savepos OFFSET
+        if IS_PS2 == 1
+            math OFFSET += 0x2c
+        endif
 
         comtype zlib
 
@@ -60,16 +70,45 @@ for CURRENT = START < FILE_SIZE
         log MEMORY_FILE OFFSET ZDAT_SIZE
         append
 
+    elif SUBCHUNK_ID == 0x52646174 #Rdat
+        # found on ps2, compressed using unknown format
+        # starts with decompressed size
+        # followed by SDAT (also compressed?)
+        math CURR_Z = 1
+
+        comtype copy 
+
+        savepos OFFSET
+        if IS_PS2 == 1
+            math OFFSET += 0x2c
+        endif
+
+        xmath RDAT_SIZE "CHUNK_SIZE - 0x40"
+
+        append
+        log MEMORY_FILE OFFSET RDAT_SIZE
+        append
+
+        #print "rdat o=%OFFSET|h%, s=%SDAT_SIZE|h%"
+
     elif SUBCHUNK_ID == 0x53444154 #SDAT
         comtype copy
 
         savepos OFFSET
+        if IS_PS2 == 1
+            math OFFSET += 0x2c
+        endif
+
+        xmath SDAT_SIZE "CHUNK_SIZE - 0x40"
 
         append
-        log MEMORY_FILE OFFSET CURR_SIZE
+        log MEMORY_FILE OFFSET SDAT_SIZE
         append
+
+        #print "sdat o=%OFFSET|h%, s=%SDAT_SIZE|h%"
+
     else
-        print "unknown chunk at %CURRENT|h%"
+        print "unknown subchunk at %CURRENT|h%"
         exit
     endif 
 
@@ -84,6 +123,9 @@ startfunction EXTRACT_FILE
     if CURR_SIZE > 0
         get ZSIZE asize MEMORY_FILE
         string NAME p= "%s_%04i.%s" BASE_NAME CURR_I CURR_EXT
+        if CURR_Z == 1
+            string NAME += ".z"
+        endif
 
         #print "%NAME%: O=%CURR_OFFSET|h% Z=%ZSIZE|h% S=%CURR_SIZE|h%"
         clog NAME 0 ZSIZE CURR_SIZE MEMORY_FILE
@@ -92,5 +134,6 @@ startfunction EXTRACT_FILE
         log MEMORY_FILE 0 0
         
         math CURR_SIZE = 0
+        math CURR_Z = 0
     endif
 endfunction
