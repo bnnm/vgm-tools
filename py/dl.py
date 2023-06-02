@@ -138,6 +138,13 @@ class Downloader(object):
 
     def _add_url(self, line):
 
+        # quick name (before url suffixes)
+        if '`' in line:
+            pos = line.index('`')
+            self.name = line[pos + 1:].strip()
+            line = line[0:pos].strip()
+
+        # url
         if line.startswith('http'):
             url = line
         else:
@@ -150,7 +157,7 @@ class Downloader(object):
                 url = url + self.suffix
 
         url = url.replace(' ', '%20')
-
+        
         # ignore non-matching urls/names
         if self.filters:
             matched = False
@@ -165,6 +172,20 @@ class Downloader(object):
                     break
             if not matched:
                 return
+
+        # dumb url generators: ^%02i#1#10^.png makes 01
+        if url.count('^') == 2:
+            start, format, end = url.split('^')
+            fmt, min, max = format.split("#")
+            min = int(min)
+            max = int(max)
+            for i in range(min, max + 1):
+                url = "%s%s%s" % (start, fmt % i, end)
+                self._add_url_path(url)
+        else:
+            self._add_url_path(url)
+        
+    def _add_url_path(self, url):
 
         # output path
         if self.name:
@@ -204,6 +225,8 @@ class Downloader(object):
         if item in self.urls:
             return
         self.urls.append(item)
+        
+    
 
     def _read(self, filename=None, vars=None):
         if not filename:

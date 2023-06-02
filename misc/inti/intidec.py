@@ -15,6 +15,7 @@ class Cli(object):
         self.list_map = {} #path > list of id
         self.list_map_file = {} #basename > list of id
         self.curr_file = None
+        self.size_excess = 0
         pass
 
     def parse(self):
@@ -63,6 +64,9 @@ class Cli(object):
             "   - (list-bin ID) + /GV3.oss: 'main' offset:\n"
             "     * 0x17CB879 (Switch) [after decompression]\n"
             "   - gv3encrypt_key_01 / gv3encrypt_key_02: saves? (offset 0x400)\n"
+            " - Grim Guardians\n"
+            "   - (list-bin ID) + /ggac.oss: 'main' offset:\n"
+            "     * 0x11F538C (Switch) [after decompression]\n"
             "\n"
             "   * after decrypting with list-bin, some files need a second common key\n"
             "     (usually snd90210 and bft90210)\n"
@@ -88,18 +92,8 @@ class Cli(object):
             offset += 1
         return size
 
-    def parse_list(self):
-        if not self.args.list_bin:
-            return
-
-        with open(self.args.list_bin, 'rb') as f:
-            data = f.read()
-
-        offset = 0
-        if self.args.list_offset:
-            offset = int(self.args.list_offset, 0)
-        
-        # these tables are reused for varios things but we need the id/path table
+    # gunvolt3
+    def parse_list_gv(self, data, offset):
         # format:
         # 00: files
         # 04: table2 entry size?
@@ -118,7 +112,7 @@ class Cli(object):
         names_offset = offset + table3_offset
         offset += table2_offset
 
-        for i in range(0, items):
+        for i in range(items):
             # table2 entry:
             # 00: ID (matches BIGRP internal ID)
             # 04: null
@@ -155,8 +149,101 @@ class Cli(object):
             self.list_map_file[basename].append(item)
 
             offset += 0x20
+
+    # grim guardians
+    def parse_list_gg(self, data, offset):
+        # info format (at the start of a table):
+        # 00: start offset 
+        # 04: entry size
+        # 08: count
         
-        pass
+        # table0:
+        # 00: table1 offset (id info?)
+        # 04: table1 size
+        # 08: table2 offset (files)
+        # 0c: table2 size
+        # 10: table3 offset (names)
+        # 14: table3 size
+
+        self.size_excess = 0x08 #regular files are padded by 0x08 of unknown data at the end (some hash?)
+
+        start, entry, count = struct.unpack_from("<III", data, offset)
+        if start != 0x0c or entry != 0x08 or count != 3:
+            raise ValueError("unknown list-bin2 format or wrong offset %x" % (offset))
+        
+        table2_offset, = struct.unpack_from("<I", data, offset + start + 0x08)
+        table3_offset, = struct.unpack_from("<I", data, offset + start + 0x10)
+        names_offset = offset + table3_offset
+        offset += table2_offset
+
+        # table2 :
+        # 00: table info (start, entry, count)
+        # 0c: hash?
+
+        start, entry, items = struct.unpack_from("<III", data, offset)
+        if start != 0x0c or entry != 0x2c:
+            raise ValueError("unknown list-bin2 format or wrong offset %x" % (offset))
+
+        offset += start + 0x04
+        for i in range(items):
+            # table2 entry:
+            # 00: 0x1BB / 0
+            # 04: ID (matches BIGRP internal ID)
+            # 08: null
+            # 0c: ? offset
+            # 10: name offset
+            # 14: some ID?
+            # 18: start offset
+            # 1c: file size? (partial if file has sub-files, each its own ID, 0 if directory)
+            # 20: 0/1 flag
+            # 24: flags
+            # 28: file attributes/flags?
+
+            # get ids + name offsets
+            id,             = struct.unpack_from("<I", data, offset + 0x04)
+            path_offset,    = struct.unpack_from("<I", data, offset + 0x10)
+            data_offset,    = struct.unpack_from("<I", data, offset + 0x18)
+            data_size,      = struct.unpack_from("<I", data, offset + 0x1c)
+
+            path_offset += names_offset
+            path_size = self.get_cstring_size(data, path_offset)
+            path = data[path_offset : path_offset + path_size].decode('utf-8')
+            #todo other fields list dir/type?
+
+            item = (id, data_offset, data_size)
+
+            # build map of path > id (not sure if filename is unique but dirs aren't)
+            if path not in self.list_map:
+                self.list_map[path] = []
+            self.list_map[path].append(item)
+
+            # just in case of moved files without full paths allow base filename too
+            basename = os.path.basename(path)
+            if basename not in self.list_map_file:
+                self.list_map_file[basename] = []
+            self.list_map_file[basename].append(item)
+
+            offset += entry
+
+    def parse_list(self):
+        if not self.args.list_bin:
+            return
+
+        with open(self.args.list_bin, 'rb') as f:
+            data = f.read()
+
+        offset = 0
+        if self.args.list_offset:
+            offset = int(self.args.list_offset, 0)
+        
+        # these tables are reused for varios things but we need the id/path table
+        test00, test04, test08, test0c = struct.unpack_from("<IIII", data, offset + 0x00)
+        if test04 == 0x20:
+            self.parse_list_gv(data, offset)
+        elif test00 == 0x0c and test04 == 0x08 and test0c == 0x30:
+            self.parse_list_gg(data, offset)
+        else:
+            raise ValueError("unknown table format")
 
     def get_ids(self):
         if not self.args.list_bin:
@@ -342,10 +429,11 @@ class Cli(object):
                 self.curr_id = id
                 self.curr_index = i
                 if len(items) == 1:
-                    if size != len(data):
-                        raise ValueError("expected size doesn't match file size")
+                    if size != len(data) and size + self.size_excess != len(data):
+                        #size = len(data)
+                        raise ValueError("expected size doesn't match file size (exp=%x, len=%x)" % (size, len(data)))
                     self.curr_index = None
-                
+
                 subdata = data[offset : offset + size]
                 self.process_subfile(subdata)
         else:

@@ -16,7 +16,7 @@ for I = 1 <= FILES
     if I == FILES
       get NEXT_OFFSET asize
       xmath SIZE "NEXT_OFFSET - OFFSET"
-print "1 %I% %NAME%, %OFFSET|h%, %SIZE%"
+      #print "1 %I% %NAME%, %OFFSET|h%, %SIZE%"
     else
       savepos CURRENT
       get NEXT_NAME_SIZE byte
@@ -24,7 +24,7 @@ print "1 %I% %NAME%, %OFFSET|h%, %SIZE%"
       get NEXT_OFFSET long
       goto CURRENT
       xmath SIZE "NEXT_OFFSET - OFFSET"
-print "2 %I% %NAME%, %OFFSET|h%, %SIZE%"
+      #print "2 %I% %NAME%, %OFFSET|h%, %SIZE%"
     endif
 
 

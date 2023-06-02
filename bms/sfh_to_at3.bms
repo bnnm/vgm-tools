@@ -1,6 +1,6 @@
 # SFH AT3 to AT3 from Capcom games by bnnm
 #
-# kinda useless now since vgmstream can play .sfh directly
+# kinda useless now since vgmstream can play .sfh directly, but may be used for other cases
 
 
 endian big 
@@ -11,11 +11,12 @@ get DATA_SIZE long  #clean data size (needed for end padding)
 get DUMMY long  #null
 
 if MODE == 0x00010000
-    #Devil May Cry 4 Demo (PS3)
+    # Devil May Cry 4 Demo (PS3)
     set BLOCK_SIZE long 0x10010
     set SKIP_SIZE 0x10
 elif MODE == 0x00010001
-    #Jojo's Bizarre Adventure HD (PS3)
+    # Jojo's Bizarre Adventure HD (PS3)
+    # Sengoku Basara 4 (PS3)
     set BLOCK_SIZE long 0x20000
     set SKIP_SIZE 0x10
 else
@@ -51,8 +52,23 @@ while OFFSET < FILESIZE
 append #off
 
 
-get NAME basename
-string NAME += ".clean.at3"
+goto 0 MEMORY_FILE1
+get IDSTRING long MEMORY_FILE1
+
+# Sengoku Basara 4 (PS3) uses sfh for various files, usually with the original extension rather than .sfh
+if IDSTRING == 0x00434C44 #\0CLD
+    string EXT = "dlcp"
+elif IDSTRING == 0x53535052 #SSPR
+    string EXT = "sspr"
+elif IDSTRING == 0x00435241 #\0CRA
+    string EXT = "arc"
+elif IDSTRING == 0x52494646 #\RIFF
+    string EXT = "at3"
+else
+    string EXT = "bin"
+endif    
+
+get BASE_NAME basename
+string NAME p= "%s.clean.%s" BASE_NAME EXT
 
 log NAME 0 DATA_SIZE MEMORY_FILE1
-

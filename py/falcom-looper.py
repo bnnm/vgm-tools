@@ -12,12 +12,14 @@ bgm_extensions = [
     '.at3', #psp
     '.at9', #vita
     '.aac', #3ds
+    '.opu', #switch
     #'.dec', #pc
     #'.de2', #pc
     #'.ogg', #pc?
 ]
 
 # Ys 3 (PSP) .txt
+# Ys 3 (Switch) .txt
 def extract_elem_bgmtbl_y3(line):
     items = line.split()
 
@@ -106,7 +108,7 @@ def extract_elem_bgmtbl_std(line, has_comment, table):
     }
     return elem
 
-def extract_bgmtbl(table):
+def extract_bgmtbl(table, switch=False):
     elems = []
 
     # mostly shift-jis but sometimes there are others chars?
@@ -127,6 +129,13 @@ def extract_bgmtbl(table):
 
             if not elem:
                 continue
+                
+            # 44khz 48khz loops
+            if switch:
+                diff = 48000.0 / 44100.0
+                elem['loop_start'] = int(elem['loop_start'] * diff)
+                elem['loop_end'] = int(elem['loop_end'] * diff)
+
             elems.append(elem)
     return elems
 
@@ -275,6 +284,10 @@ def extract_elems():
     table = 'bgmtbl.txt'
     if os.path.exists(table):
         return extract_bgmtbl(table)
+
+    table = 'bgmtbl.txt_switch' #renamed to detect since no diffs vs psp
+    if os.path.exists(table):
+        return extract_bgmtbl(table, switch=True)
 
     table = 'bgmtbl.tbl'
     if os.path.exists(table):

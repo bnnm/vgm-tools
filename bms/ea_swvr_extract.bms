@@ -121,6 +121,8 @@ startfunction WRITE_SWVR
       string NAME += "stream"
     elif NAME ext ""
       string NAME += ".stream"
+    elif NAME ext "stream"
+      #
     else
       string NAME += ".stream"
     endif

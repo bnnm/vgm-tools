@@ -61,10 +61,12 @@ def main():
     for hash, semihash, file, base in items:
         lines.append(file)
 
+        is_unique = True
         subfiles = dupes[hash]
         for subfile in subfiles:
             if subfile == file:
                 continue
+            is_unique = False
             dupe = " - dupe " + subfile
             lines.append(dupe)
 
@@ -73,8 +75,11 @@ def main():
             for subfile in subfiles:
                 if subfile == file:
                     continue
+                is_unique = False
                 dupe = " - semi " + subfile
                 lines.append(dupe)
+        if is_unique:
+            lines.append('- unique')
 
     with open('!diffs.txt', 'w') as f:
         f.write('\n'.join(lines))
