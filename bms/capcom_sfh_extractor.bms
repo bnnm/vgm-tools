@@ -1,11 +1,11 @@
-# SFH AT3 to AT3 from Capcom games by bnnm
+# Capcom .SFH extractor by bnnm
 #
-# kinda useless now since vgmstream can play .sfh directly, but may be used for other cases
+# kinda useless now since vgmstream can play .sfh directly (in most cases), but may be used for other files
 
 
 endian big 
 
-idstring "\x00\x53\x46\x48"
+idstring "\x00\x53\x46\x48" #\0SFH
 get MODE long
 get DATA_SIZE long  #clean data size (needed for end padding)
 get DUMMY long  #null
