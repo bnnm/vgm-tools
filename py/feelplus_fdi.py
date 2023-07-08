@@ -1,9 +1,9 @@
 # feelplus .fpi + .fpd extractor by bnnm
 #
 # found in Lost Odyssey (X360), No More Heroes (PS3/X360), Ninety-Nine Nights II (X360)
-# loosely based on original .bms by chrrox,  thanks to hcs for figuring out the name encoding.
+# loosely based on original .bms by chrrox, thanks to hcs for figuring out the name encoding.
 # 
-# TODO add extensions to Lost Odyssey (unknown exts table<>file)
+# TODO add extensions for Lost Odyssey (unknown exts table<>file)
 
 import os, struct, argparse, glob
 

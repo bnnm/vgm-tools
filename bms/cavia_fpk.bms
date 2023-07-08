@@ -1,0 +1,41 @@
+# cave .fpk extractor
+
+idstring "fpk\x00"
+get DUMMY long
+get FILES long
+get UNK long #align?
+
+get HEAD_OFFSET long
+get HEAD_OFFSET long
+get UNK long #head size?
+get DUMMY long
+
+get DUMMY long
+get DUMMY long
+get DATA_OFFSET long
+get UNK long
+getdstring DUMMY 0x10
+getdstring PACK_NAME 0x20 #sometimes not the same as basename
+
+get BASE_NAME basename
+
+goto HEAD_OFFSET
+for I = 0 < FILES
+    get DUMMY long
+    get OFFSET long
+    get SIZE long
+    get EXTB long
+
+    # sometimes not an extension, to be improved
+    if EXTB == 0
+        string EXT = "bin"
+    else
+        string EXT = EXTB
+        string EXT r EXT
+    endif
+    string NAME p= "%s_%04i.%s" BASE_NAME I EXT
+
+    math OFFSET += DATA_OFFSET
+
+    log NAME OFFSET SIZE
+next I

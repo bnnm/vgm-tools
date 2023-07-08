@@ -1,0 +1,151 @@
+# Torus .hnk extractor
+#
+# References: 
+# - falling_skies.bms 
+# - https://github.com/desuex/hunkfile/blob/master/HunkfileCodec.py
+
+# set to 1 to skip HNK without sound archives
+math IS_FILTER_SOUND = 1
+# set to 1 to write file flags
+math IS_DEBUG_TYPE = 0
+# set to 1 to write all files (even useless markers)
+math IS_DEBUG_ALL = 0
+
+open FDDE "HNK"
+set NAME string ""
+get HNK_SIZE asize
+math COUNT = 0
+
+string FOLDER = "."
+string FILENAME = "root"
+for OFFSET = 0 < HNK_SIZE
+    goto OFFSET
+    # entry
+    get SIZE long
+    get TYPE short
+    get FLAG short
+
+    xmath SUBTYPE " TYPE & 0xFF "
+
+    # example flag/type 
+    # - 0004 0070: root header
+    # - 0004 0071: asset header
+    # - 0004 0072: asset/folder end? (empty)
+    # - 0004 100F  StringTable body
+    # - 0004 0002: index table
+    # - 0020 2086: png
+    # - 0004 1150: TSETexture header
+    # - 0080 1151: TSETexture body
+    # - 0004 2088: StateFlowTemplate (sound config?)
+    # - 0004 200c: LiteScript
+    # - 0020 1090: SqueakSample header
+    # - 0040 0091: SqueakSample data
+    # - 0020 3090: SqueakSample header
+    # - 0040 3090: SqueakSample header + adpcm 
+    # - 0020 3091: SqueakSample data
+    # - 0040 4090: SqueakSample header + adpcm
+    # - 0020 3092: SqueakStream header (rawi music?)
+    # - 0020 2092: SqueakStream header (old rawi)
+    # - 0020 1092: SqueakStream header (rawi vo/localized?)
+    # - 0020 4092: SqueakStream header (rawi music?)
+    # - 0020 1092: SqueakStream header
+    # - 0020 1093: SqueakStream rawname
+    # (same game may contain ex. 3092 + 4092)
+
+    savepos OFFSET
+
+
+    #if OFFSET >= HNK_SIZE
+    #    cleanexit
+    #endif
+
+
+    math SKIP = 0
+
+    string EXT = "bin"
+
+
+    # root header
+    if TYPE == 0x0070
+        #get SIZE? short
+        #get UNK short # usually 1
+        #get UNK short # usually 1
+        #get UNK short # usually 2/3
+        #get ASSET_COUNT short # each 0071 named asset with N subfiles inside
+        #get DUMMY short #empty
+        #get TYPES_COUNT short #
+        #get DUMMY short #empty
+        # per type (seems to be a simple index a not really a way to tie to assets)
+        #getdstring 0x40 #Temp, graphics, default, sound, physics
+        #get MAX_ASSET_SIZE long
+        #get UNK long #
+        math SKIP = 1
+        string EXT = ""
+    endif
+
+    # asset header
+    if TYPE == 0x0071
+        get UNK short #0/1
+        get FLAGS short #08 / 01 / 11 (11 in streams, 08 in samples?)
+        get INTERNAL_ASSET_COUNT short
+        get FOLDERSZ short
+        get NAMESZ short
+        getdstring FOLDER FOLDERSZ
+        getdstring FILENAME NAMESZ
+        math SKIP = 1
+        string EXT = "header"
+    endif
+
+    #asset end (empty)
+    if TYPE == 0x0072
+        math SKIP = 1
+        string EXT = "end"
+    endif
+
+    # some kind of index table? (usually small with few entries but not always)
+    if TYPE == 0x0002
+        math SKIP = 1
+        string EXT = "index"
+    endif
+
+    if SUBTYPE == 0x90      #squeaksample (header/header+body)
+        string EXT = "" 
+    elif SUBTYPE == 0x91    #squeaksample (body)
+        string EXT = "raw"
+    elif SUBTYPE == 0x92    #squeakstream (header)
+        string EXT = ""
+    elif SUBTYPE == 0x93    #squeakstream (name)
+        string EXT = "asset"
+    endif
+
+
+    if IS_FILTER_SOUND == 1
+        string TEST_FOLDER = FOLDER
+        string TEST_FOLDER -= -6
+        if TEST_FOLDER != "Squeak"
+            math SKIP = 1
+        endif
+    endif
+
+    if IS_DEBUG_ALL == 1
+        math SKIP = 0
+    endif
+
+    if EXT == "" && IS_DEBUG_TYPE == 1
+        string NAME p= "%s/%s.%04x.%04x" FOLDER FILENAME FLAG TYPE
+    elif IS_DEBUG_TYPE == 1
+        string NAME p= "%s/%s.%s.%04x.%04x" FOLDER FILENAME EXT FLAG TYPE
+    elif EXT == ""
+        string NAME p= "%s/%s" FOLDER FILENAME
+    else
+        string NAME p= "%s/%s.%s" FOLDER FILENAME EXT
+    endif
+    #string NAME p= "%08i_%08x_%s_%s" COUNT TYPE FOLDER FILENAME
+
+    if SKIP == 0
+        log NAME OFFSET SIZE
+    endif
+    math OFFSET += SIZE
+    
+    math COUNT += 1
+next

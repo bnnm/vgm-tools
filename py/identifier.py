@@ -8,6 +8,22 @@ import sys
 import struct
 import glob
 
+fourcc_type = {
+    b'@UTF': 'acb-acf',
+    b'OggS': 'ogg',
+    b'AFS2': 'awb',
+    b'AKB ': 'akb',
+    b'AFS\0': 'adx',
+    b'BKHD': 'bkhd',
+    b'sabf': 'sab',
+    b'Unit': 'unity',
+    b'MThd': 'midi',
+    b'CPK ': 'cpk',
+    b'srcd': 'srcd', #reengine
+}
+fourcc2_type = {
+    b'ftyp': 'mp4',
+}
 
 class Reader(object):
     def __init__(self, buf):
@@ -82,22 +98,7 @@ def main():
         id = header.get_u32be(0x00)
         fourcc = data[0:4]
         fourcc2 = data[4:8]
-        
-        fourcc_type = {
-            b'@UTF': 'acb-acf',
-            b'OggS': 'ogg',
-            b'AFS2': 'awb',
-            b'AKB ': 'akb',
-            b'AFS\0': 'adx',
-            b'BKHD': 'bkhd',
-            b'sabf': 'sab',
-            b'Unit': 'unity',
-            b'MThd': 'midi',
-            b'CPK ': 'cpk',
-        }
-        fourcc2_type = {
-            b'ftyp': 'mp4',
-        }
+       
 
         type = fourcc_type.get(fourcc)
         if not type:

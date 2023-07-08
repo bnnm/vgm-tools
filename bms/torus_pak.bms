@@ -1,0 +1,52 @@
+# Torus .pak extractor
+#
+# Based on: 
+# - scooby_doo_swamp.bms, croods_party_dat.bms
+
+
+idstring "PAK\0"
+get FILES long
+endian guess FILES
+for i = 0 < FILES
+    get NAME_CRC long
+    get OFFSET long
+    get SIZE long
+
+    savepos TMP
+    goto OFFSET
+    getdstring SIGN 4
+    
+    if SIGN == "!ZLS"
+        endian save CURRENT_ENDIAN
+        endian little
+        get XSIZE long
+        savepos OFFSET
+        math SIZE - 8
+        clog MEMORY_FILE OFFSET SIZE XSIZE
+
+        getdstring SUBSIGN 4 MEMORY_FILE
+        get SUBTYPE long MEMORY_FILE
+        #getdstring DUMMY 0x14 MEMORY_FILE
+        #getdstring SUBTYPE 4 MEMORY_FILE
+        
+        if SUBSIGN == "maxa"
+            string EXT = "file" #should be "files" but quickbms can't write it?
+            #string NAME += "files"
+        elif SUBTYPE == 0x00040070
+            string EXT = "hnk"
+        else
+            string EXT = "zdat"
+        endif
+
+        string NAME p= "%08i_%08x.%s" I NAME_CRC EXT
+
+        log NAME 0 XSIZE MEMORY_FILE
+        endian set CURRENT_ENDIAN
+    else
+        string EXT = "dat"
+        string NAME p= "%08i_%08x.%s" I NAME_CRC EXT
+
+        log NAME OFFSET SIZE
+    endif
+    goto TMP
+next i

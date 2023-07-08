@@ -1,0 +1,34 @@
+# Capcom .arc extractor by bnnm
+
+endian big
+idstring "\x00CRA"
+
+get UNK short
+
+#endian guess UNK
+#endian save CURRENT_ENDIAN
+
+get FILES short
+
+for I = 0 < FILES
+    getdstring NAME 0x40
+    get UNK long #type? 0CF7FB37=MSFC, 15D782FB/1BCC4966=raw?
+    get SIZE long
+    get UNK long #samples?
+    get OFFSET long
+
+    savepos CURRENT
+    goto OFFSET
+    get ID long
+    goto CURRENT
+
+    if ID == 0x4D534643 #MSF\x43
+        string EXT = ".msf"
+    else
+        string EXT = ".bin" # unknown raw data (xor'd? pcm24?)
+    endif    
+
+    string NAME += EXT
+
+    log NAME OFFSET SIZE
+next I
