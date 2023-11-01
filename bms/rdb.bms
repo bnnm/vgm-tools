@@ -1,0 +1,216 @@
+# KOEI RDB/BIN/FILE extractor
+#
+# mainly for research purposes, try Cethleann / rdbtool first
+# Note it ignores index (.rdb) entries
+
+# config
+math FILTER_AUDIO = 1
+math USE_SUBDIRS = 1
+
+###
+
+# .RDB and .RDB.BIN / .FILE have the same format but the payload in RDB is null or a refname,
+# and .BIN/FILE don't have "internal/external" flags
+# (no offsets in RDB, other files?)
+
+math IS_PADDING = 0
+
+
+getdstring RBD_TYPE 0x08
+if RBD_TYPE == "_DRK0000" #.rdb
+    get START_OFFSET long
+    get DUMMY long  #version? 0x0a, 0x10
+    get FILES long
+    get RDB_KTID long
+    get STREAMS_PATH string
+
+    math OFFSET = START_OFFSET
+    math IS_PADDING = 1
+    
+elif RBD_TYPE == "PDRK0000" #.rdb.bin
+    get START_OFFSET long
+    get DUMMY long  #version? 0x10
+    math OFFSET = START_OFFSET
+    
+elif RBD_TYPE == "IDRK0000" #.file
+    math OFFSET = 0
+
+else
+    print "unknown KT format"
+    cleanexit
+endif
+
+
+
+get FILE_SIZE asize
+goto OFFSET
+
+#for I = 0 < FILES
+for OFFSET = START < FILE_SIZE
+    #print "O=%OFFSET|h%"
+
+    idstring "IDRK0000"
+
+    get ENTRY_SIZE longlong #not including padding
+    get DATA_SIZE longlong
+    get DCMP_SIZE longlong #decompressed
+    get EXTRA_SIZE long
+    get FILE_KTID long #name
+    get TYPE_KTID long #extension
+    get FLAGS long
+    # 0x00010000: external (from .file)
+    #   found in "STREAMS_PATH/0x(FILE_KTID-hex.file"
+    # 0x00020000: internal (from .bin)
+    #   found in .bin (or .bin_0, .bin_1...) with same FILE_KTID
+    #   not all files in RDB exists
+    # 0x00100000: zlib
+    # 0x00200000: lz4 or encrypted when set w/ zlib (P5S PC)
+    #   encryption is XorShift32 with RBD_KTID as base key
+    #   https://github.com/zarroboogs/Cethleann/blob/master/Cethleann/Compression/P5SPC/RDBEncryption.cs 
+    get NULL long  # ktid in .file/bin
+    get COUNT long
+
+    if COUNT > 0
+        for J = 0 < COUNT
+            get UNK long #5?
+            get UNK long #1?
+            get UNK long #KTID?
+        next J
+    endif
+    
+    if EXTRA_SIZE > 0
+        # N numbers or KTIDs
+        goto EXTRA_SIZE 0 SEEK_CUR
+    endif
+    savepos OFFSET
+
+    callfunction GET_NAME 1
+
+    # in RDB sometimes is a name that seems to be a debug reference rather than filename
+    if DATA_SIZE > 0
+        savepos OFFSET
+        callfunction EXTRACT_FILE 1
+        math OFFSET += DATA_SIZE
+        goto OFFSET
+    endif
+
+    if IS_PADDING != 0
+        # rdb padding
+        padding 4
+    else
+        # .BIN may be padded, unsure if correct
+        savepos CURRENT
+        xmath PAD "0x10 - (ENTRY_SIZE % 0x10)"
+        if PAD > 0 && PAD < 0x10 && CURRENT < FILE_SIZE
+            getdstring DUMMY PAD
+        endif
+    endif
+    
+    savepos OFFSET
+    
+next
+#next I
+
+# 
+
+startfunction EXTRACT_FILE
+    xmath IS_EXTERNAL "FLAGS & 0x00010000"
+    xmath IS_INTERNAL "FLAGS & 0x00020000"
+    xmath IS_ZLIB "FLAGS & 0x00100000"
+    xmath IS_LZ4  "FLAGS & 0x00200000"
+    
+    if IS_EXTRACTABLE == 0
+        # ignored
+
+    elif IS_ZLIB != 0 && IS_LZ4 != 0
+        # XorShift32 encryption with RBD_KTID as base key
+        # https://github.com/zarroboogs/Cethleann/blob/master/Cethleann/Compression/P5SPC/RDBEncryption.cs 
+        print "encrypted entry"
+    
+    elif IS_LZ4 != 0
+        print "lz4 entry"
+    
+    elif IS_EXTERNAL == 0 && IS_INTERNAL == 0
+        # external/internal flags mean this entry is just an index and not a file
+        if IS_ZLIB != 0
+            comtype ZLIB
+
+            math CHUNK_SIZE = 0x00004000
+            log MEMORY_FILE 0 0
+            append
+            do
+                get CHUNK_ZSIZE long
+
+                if DCMP_SIZE < CHUNK_SIZE
+                    math CHUNK_SIZE = DCMP_SIZE
+                endif
+
+                savepos CHUNK_OFFSET
+                clog MEMORY_FILE CHUNK_OFFSET CHUNK_ZSIZE CHUNK_SIZE
+                math CHUNK_OFFSET += CHUNK_ZSIZE
+                goto CHUNK_OFFSET
+
+                math DCMP_SIZE -= CHUNK_SIZE
+            while DCMP_SIZE > 0
+            append
+
+            get MEM_SIZE asize MEMORY_FILE
+            log NAME 0 MEM_SIZE MEMORY_FILE
+
+        else
+            log NAME OFFSET DCMP_SIZE
+        endif
+
+    endif
+endfunction
+
+startfunction GET_NAME
+    if   TYPE_KTID == 0x563bdef1
+        string EXT = "g1m"
+    elif TYPE_KTID == 0x6fa91671
+        string EXT = "g1a"
+    elif TYPE_KTID == 0xafbec60c
+        string EXT = "g1t"
+    elif TYPE_KTID == 0x54738c76
+        string EXT = "g1co"
+    elif TYPE_KTID == 0x5b2970fc
+        string EXT = "ktf2"
+    elif TYPE_KTID == 0xed410290
+        string EXT = "ktsg"
+        
+    elif TYPE_KTID == 0x20a6a0bb
+        string EXT = "kidsobjdb"
+    elif TYPE_KTID == 0x5153729b || TYPE_KTID == 0xb340861a 	
+        string EXT = "mtl"
+    elif TYPE_KTID == 0x8e39aa37 || TYPE_KTID == 0xbe144b78 	
+        string EXT = "ktid"
+    elif TYPE_KTID == 0x56efe45c || TYPE_KTID == 0xbbf9b49d
+        string EXT = "grp"
+    elif TYPE_KTID == 0xbbd39f2d
+        string EXT = "srsa"
+    elif TYPE_KTID == 0x0d34474d
+        string EXT = "srst"
+    elif TYPE_KTID == 0xB0A14534
+        string EXT = "sgcbin"
+        
+    else
+        string EXT p= "%08x" TYPE_KTID
+    endif
+
+    string NAME p= "0x%08x.%s" FILE_KTID EXT
+
+    if USE_SUBDIRS != 0
+        string NAME p= "%s/0x%08x.%s" EXT FILE_KTID EXT
+    endif
+
+    #print "%NAME% %OFFSET|h% %TYPE_KTID|h%"
+
+    math IS_EXTRACTABLE = 1
+    if FILTER_AUDIO != 0
+        # only srsa/srst/sgcbin
+        if TYPE_KTID != 0xbbd39f2d && TYPE_KTID != 0x0d34474d && TYPE_KTID != 0xB0A14534
+            math IS_EXTRACTABLE = 0
+        endif
+    endif
+
+endfunction

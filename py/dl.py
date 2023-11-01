@@ -30,6 +30,8 @@ import multiprocessing.dummy
 
 class Downloader(object):
     def __init__(self):
+        self._filename = 'url.txt' #default
+        
         self.threads = 25
         self.prefix = None
         self.suffix = None
@@ -230,7 +232,9 @@ class Downloader(object):
 
     def _read(self, filename=None, vars=None):
         if not filename:
-            filename = 'url.txt'
+            filename = self._filename
+        else:
+            self._filename = filename
 
         if not os.path.exists(filename):
             print("filename not found")
@@ -262,7 +266,7 @@ class Downloader(object):
     def _download(self, url, path):
         if self.debug:
             print((url, path))
-            return
+            return None
 
         try:
             try:
@@ -280,11 +284,14 @@ class Downloader(object):
 
             urllib.request.urlretrieve(url, path)
             
-            with self.counter.get_lock():
-                self.counter.value += 1
+            #with self.counter.get_lock():
+            #    self.counter.value += 1
+
+            return None
             
         except Exception as e:
             print("error with url:\n- url: %s\n- path: %s\n- %s" % (url, path, e))
+            return url
 
 
     def _launch(self):
@@ -299,15 +306,21 @@ class Downloader(object):
             opener.addheaders = self.headers
         urllib.request.install_opener(opener)
 
-        self.counter = multiprocessing.Value('i', 0)
+        #self.counter = multiprocessing.Value('i', 0)
 
         if self.threads == 1:
             # disable pool for single threaded
+            errors = []
             for url, path in self.urls:
-                self._download(url, path)
+                error = self._download(url, path)
+                if error:
+                    errors.append(error)
         else:
             pool = multiprocessing.dummy.Pool(self.threads)
-            pool.starmap(self._download, self.urls)
+            all_results = pool.starmap(self._download, self.urls)
+            
+            #None = ok, url = ko
+            errors = [res for res in all_results if res]
 
             # divide into lists of max N elems
             #chunks = [self.urls[i:i + self.threads] for i in range(0, len(self.urls), self.threads)]
@@ -315,7 +328,14 @@ class Downloader(object):
             #for chunk in chunks:
             #    pool.starmap(self._download, chunk)
 
-        print("downloaded %i of %i" % (self.counter.value, len(self.urls)))
+        if errors:
+            outfile = os.path.splitext(self._filename)[0] + '-errors.txt'
+            with open(outfile, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(errors))
+        
+        total = len(self.urls)
+        done = total - len(errors)
+        print("downloaded %i of %i" % (done, total))
 
 
     def start(self, filename=None, vars=None):

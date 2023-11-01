@@ -1,0 +1,66 @@
+# Irem's PS2 DAT+FAT extractor
+#
+# based on original by aluigi: https://aluigi.altervista.org/bms/disaster_report.bms
+# script for QuickBMS http://quickbms.aluigi.org
+
+math IS_FILTER_EMPTY = 1 #sometimes
+
+# FAT can be external or part of DAT for smaller packs
+open FDDE "FAT" 0 EXISTS
+if EXISTS != 0
+    math FAT_FILE = 1
+else
+    math FAT_FILE = 0
+    open FDDE "DAT"
+endif
+
+idstring "FAT "
+get FILES long
+
+goto 0xF4
+get START_OFFSET long
+get NAMES_OFFSET long
+get BASE_OFFSET long
+
+# later games (PachiPara 13+)
+xmath ENTRY_SIZE " (NAMES_OFFSET - START_OFFSET) / FILES "
+
+if ENTRY_SIZE != 0x10 && ENTRY_SIZE != 0x0c
+    print "unknown format"
+    exit()
+endif
+
+goto START_OFFSET
+for i = 0 < FILES
+    get OFFSET long
+    get SIZE long
+    if ENTRY_SIZE == 0x10
+        get DUMMY long #type? 04/05/etc
+    endif
+    get NAME_OFFSET long
+
+    savepos CURRENT
+    goto NAME_OFFSET
+    get NAME string
+    goto CURRENT
+
+    math OFFSET += BASE_OFFSET
+    putarray 0 i OFFSET
+    putarray 1 i SIZE
+    putarray 2 i NAME
+next i
+
+if FAT_FILE = 1
+    open FDDE "DAT"
+endif
+for i = 0 < FILES
+    getarray OFFSET 0 i
+    getarray SIZE 1 i
+    getarray NAME 2 i
+    
+    if IS_FILTER_EMPTY == 1 && SIZE == 0
+        continue
+    endif
+
+    log NAME OFFSET SIZE
+next i

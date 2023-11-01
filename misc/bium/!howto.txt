@@ -1,0 +1,33 @@
+HOW TO DOWNLOAD + DECRYPT + EXTRACT BEATMANIA IIDX ULTIMATE MOBILE ASSETS (by bnnm)
+(note: these tools were mostly pieced together from little crap I had around, feel free to use as a base for better tools)
+
+* needs python3 and .NET +4
+* decryption by default doesn't delete original files, so may need +15GB (data) + 15GB (decryption) + 15GB (unity extraction)
+  * open decryption.py and set "REMOVE_ORIGINALS = True" if needed
+
+STEPS:
+- unzip the files into some dir
+
+- modify current-url.txt if needed
+  - current is loaded using an API but too much effort to reverse, can be gotten via memdumps/etc
+  - as of v1.18.1 / 2023-04
+
+- launch urls.py
+  - this will download + decrypt ablist.json if not found (delete it to redownload)
+  - then will generate urls.txt
+  - ablist.json can be used to find about certain
+
+- drag and drop urls.txt into dl.py to download bgm assets
+  - remove any useless urls if needed, or uncomment "filter" and put stuff there, etc
+  - check urls-errors.txt if generated
+
+- launch decrypt.py
+  - uses bium.exe + ablist.json to decrypt all files
+  - you can also drag a single file too
+
+- use some unity extractor to get data from .dec files
+  - since UnityAsset Studio is slow and memory hungry, may try this instead:
+  - install UnityPy in the command line: pip install UnityPy
+  - launch unity-extract.py to automatically extract all music files (only)
+
+- NOTE: when updating the bgm rip, preferably don't overwrite old/unchanged files, so old timestamps are kept

@@ -20,6 +20,15 @@ fourcc_type = {
     b'MThd': 'midi',
     b'CPK ': 'cpk',
     b'srcd': 'srcd', #reengine
+    b'KTSR': None, #manual
+    b'KTSC': 'ktsc',
+    b'RIFF': 'riff', #wav or otherwise
+    b'RIFX': 'rifx', #wav or otherwise
+    b'XWAV': 'xwv',
+    b'\x89PNG': 'png',
+    b'ID3\x03': 'mp3',
+    b'ID3\x04': 'mp3',
+    b'PK\x03\x04': 'zip',
 }
 fourcc2_type = {
     b'ftyp': 'mp4',
@@ -96,58 +105,54 @@ def main():
         type = ""
         channels = 0
         id = header.get_u32be(0x00)
+        id2 = header.get_u32be(0x04)
         fourcc = data[0:4]
         fourcc2 = data[4:8]
        
+        channels = 0
 
         type = fourcc_type.get(fourcc)
         if not type:
             type = fourcc2_type.get(fourcc2)
 
-        if (id == 0x89504E47 or id == 0x89706E67): # PNG
-            channels = 0
-            type = "png"
-
         if ((id & 0xFFFF0000) == 0x80000000):
-            channels = 0
             type = "adx"
-
-        if (id == 0x504B0304): # zip
-            channels = 0
-            type = "zip"
-
-        if (id == 0x49443303 or id == 0x7FFB9044 or id == 0x7FFB9064): 
-            channels = 0
-            type = "mp3"
-
-        if (id == 0x58574156): # xwav
-            streams = header.get_u8(0x27)
-            if streams > 1:
-                channels = 6
-            else:
-                channels = header.get_u8(0x47)
-            type = "xwv"
 
         if ((id & 0x7f7f7f7f) == 0x48434100): # HCA
             channels = header.get_u16le(0x0c)
             type = "hca"
 
-        if (id == 0x52494658): # RIFX
-            channels = header.get_u16le(0x16)
-            type = "riff"
-
-        if (id == 0x52494646): # RIFF
-            channels = header.get_u16le(0x16)
-            type = "riff"
+        if fourcc == b'KTSR':
+            if   id2 == 0x777B481A:
+                type = "ktsl2asbin"
+            elif id2 == 0x0294DDFC:
+                type = "ktsl2stbin"
+            elif id2 == 0xC638E69E:
+                type = "ktsl2gcbin"
 
         if not type:
             #print("unknown file %s" % filename)
             continue
 
+        
+
+        if fourcc == b'XWAV':
+            streams = header.get_u8(0x27)
+            if streams > 1:
+                channels = 6
+            else:
+                channels = header.get_u8(0x47)
+
+        if fourcc == b'RIFX':
+            channels = header.get_u16be(0x16)
+        if fourcc == b'RIFF':
+            channels = header.get_u16le(0x16)
+
         if channels <= 0:
             dir = "%s" % (type)
         else:
             dir = "%s_%ich" % (type, channels)
+
         move_file(filename, dir)
 
 main()

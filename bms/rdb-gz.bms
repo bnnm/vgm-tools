@@ -1,0 +1,40 @@
+# KOEI .gz extractor (FE Three Houses)
+
+
+get FLAGS long
+if FLAGS != 0x00010000
+    print "unknown flag"
+    exit
+endif
+get CHUNKS long
+get DEC_SIZE long
+
+# list of chunk sizes, read to pad properly
+for I = 0 < CHUNKS
+    get CHUNK_HZSIZE long #includes 32-bit size
+next I
+padding 0x80
+
+
+comtype ZLIB
+math CHUNK_SIZE = 0x100000 #no idea but good enough
+
+log MEMORY_FILE 0 0
+append
+for I = 0 < CHUNKS
+    get CHUNK_ZSIZE long
+
+    savepos CHUNK_OFFSET
+    clog MEMORY_FILE CHUNK_OFFSET CHUNK_ZSIZE CHUNK_SIZE
+    math CHUNK_OFFSET += CHUNK_ZSIZE
+    goto CHUNK_OFFSET
+
+    padding 0x80
+next I
+append
+
+get NAME basename
+string -= NAME -3
+
+get MEM_SIZE asize MEMORY_FILE
+log NAME 0 MEM_SIZE MEMORY_FILE
