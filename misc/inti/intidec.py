@@ -35,7 +35,7 @@
 #   - or use strings2.exe and check simple/suspicious strings
 #   - or decompile and see decryption calls
 # - do note that the filenames are hashed, but in list-bin follow the original order
-#   (IOW: use them to make an ordered playlist, ex. 4ddd7369/* = stream bgm)
+#   (IOW: use them to make an ordered playlist, ex. */4ddd7369/* = ordered streams)
 
 
 import os, sys, argparse, glob, struct, zlib
