@@ -1,0 +1,32 @@
+# dechunks bigfiles with PS-ADPCM when finding offsets in the exe is too boring
+math CHUNK_START = 0x8000
+math CHUNK_OTHER = 0x4000
+
+get END asize
+get BASE_NAME basename
+
+math COUNT = 0
+
+math OFFSET = 0
+#math POS = CHUNK_START
+for POS = CHUNK_START < END
+    goto POS 
+    get TEST long
+
+    if TEST == 0
+        string NAME p= "%s_%02i.vgmstream" BASE_NAME COUNT
+        xmath SIZE "POS  -  OFFSET"
+
+        log NAME OFFSET SIZE
+        math OFFSET = POS
+        math COUNT += 1
+
+        math POS += CHUNK_START 
+    else
+        math POS += CHUNK_OTHER 
+    endif
+next
+
+string NAME p= "%s_%02i.vgmstream" BASE_NAME COUNT
+xmath SIZE "POS  -  OFFSET"
+log NAME OFFSET SIZE

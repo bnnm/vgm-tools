@@ -87,7 +87,8 @@ def move_file(filename, dir):
 
 
 def main():
-    files = glob.glob('**/*', recursive=True)
+    #files = glob.glob('**/*', recursive=True)
+    files = glob.glob('*', recursive=True)
     for filename in files: #os.listdir("."):
         if not os.path.isfile(filename):
             continue
@@ -135,7 +136,8 @@ def main():
             continue
 
         
-
+        channels = None
+        subdir = ''
         if fourcc == b'XWAV':
             streams = header.get_u8(0x27)
             if streams > 1:
@@ -148,10 +150,17 @@ def main():
         if fourcc == b'RIFF':
             channels = header.get_u16le(0x16)
 
-        if channels <= 0:
-            dir = "%s" % (type)
+        if fourcc == b'AKB ':
+            channels = header.get_u8(0x0d)
+            subdir = '%s-' % (header.get_u16le(0x0e))
+
+        if channels:
+            subdir = subdir + '%ich' % (channels)
+
+        if subdir:
+            dir = "%s/%s" % (type, subdir)
         else:
-            dir = "%s_%ich" % (type, channels)
+            dir = "%s" % (type)
 
         move_file(filename, dir)
 

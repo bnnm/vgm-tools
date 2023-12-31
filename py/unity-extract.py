@@ -104,15 +104,26 @@ class ObjectHandler():
     def check_dupe(self):
         dst = self.dst
         dst_done = self.dst_done
+        
+        if self.args.name_dupe:
+            dst_done[dst] = 1
 
         if dst in dst_done:
             count = dst_done[dst]
             dst_done[dst] += 1
 
+            file = os.path.basename(self.file)
+            file, _ = os.path.splitext(file)
+            file, _ = os.path.splitext(file) #double ext
+            
             dst, ext = os.path.splitext(dst)
-            dst = "%s#%04i%s" % (dst, count, ext)
+            dst = "%s#%s%s" % (dst, file, ext)
+
+            if dst in dst_done:
+                dst, ext = os.path.splitext(dst)
+                dst = "%s#%04i%s" % (dst, count, ext)
         else:
-            dst_done[dst] = 1
+            dst_done[dst] = 0
 
         self.dst = dst
 
@@ -123,7 +134,7 @@ class ObjectHandler():
             try:
                 self.data = obj.read()
                 self.update_name()
-                print(f'{self.dst} [{obj.type.name}]')
+                print(f'- {self.dst} [{obj.type.name}]')
             except:
                 print(f'unsupported object {obj.type.name} in {self.file}')
 
@@ -160,6 +171,7 @@ class ObjectHandler():
         if not dst:
             dst = 'unknown.bin'
         self.check_dupe()
+        dst = self.dst
 
         data_bytes = self.mv #mv.tobytes()
 
@@ -170,12 +182,23 @@ class ObjectHandler():
 
 
 
-def handle_file(args, file):
+def handle_file(args, file, DST_DONE):
     env = UnityPy.load(file)
-    DST_DONE = {}
+    
+    if not env.objects and not env.container:
+        print(f'ignored: {file} [not unity/encrypted?]')
+        return
+
+    if args.list:
+        print(f'{file}')
+    else:
+        print(f'parsing: {file}')
+
+    # in rare cases with no paths use plain
+    is_plain = args.plain or (not env.container and env.objects)
 
     # reads Assets
-    if not args.plain:
+    if not is_plain:
         for path, obj in env.container.items():
             hobj = ObjectHandler(args, file, obj, DST_DONE, path)
             hobj.handle()
@@ -184,12 +207,10 @@ def handle_file(args, file):
             hobj = ObjectHandler(args, file, obj, DST_DONE)
             hobj.handle()
 
-    if not env.objects:
-        print(f'ignored: {file} [not unity/encrypted?]')
 
 
 def main_sub(args):
-    IGNORED_EXTS = set(['.py', '.txt', '.fsb'])
+    IGNORED_EXTS = set(['.py', '.txt', '.fsb', '.json', '.resource', '.acb', '.awb', '.dat', '.dll'])
 
     if args.key:
         UnityPy.set_assetbundle_decrypt_key(args.key)
@@ -203,6 +224,7 @@ def main_sub(args):
     #        raise ImportError("Invalid UnityPy version detected. Please use version 1.9.6")
 
 
+    DST_DONE = {}
     if True:
     #try:
         files = []
@@ -222,7 +244,7 @@ def main_sub(args):
         
             if True:
             #try:
-                handle_file(args, file)
+                handle_file(args, file, DST_DONE)
             #except Exception as e:
             #    print("error processing %s: %s" % (file, e))
 
@@ -234,7 +256,7 @@ def main(args):
         main_sub(args)
     except AttributeError as e:
         if 'version_engine' in str(e):
-            print("version not found? (set manually)")
+            print("version not found? (set manually, ex. -v 2021.2.19f1)")
         else:
             raise e
     
@@ -246,14 +268,15 @@ def parse_args():
     epilog = None
 
     ap = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("files", help="files to match", nargs='*', default=["*","**/*"])
+    ap.add_argument("files", help="files to match", nargs='*', default=["**/*"])
     ap.add_argument("-l","--list", help="list assets only", action='store_true')
     ap.add_argument("-p","--plain", help="use plain paths instead of internal paths (if available)", action='store_true')
-    ap.add_argument("-v","--version", help="set Unity version", default=None)
+    ap.add_argument("-v","--version", help="set Unity version\n usually found near the top of the unity files\n (ex. 2021.2.19f1)", default=None)
     ap.add_argument("-k","--key", help="set Unity CN key", default=None)
     ap.add_argument("-f","--filter-include", help="Include files that match wildcard filter", default=None)
     ap.add_argument("-F","--filter-exclude", help="Include files that don't match wildcard filter", default=None)
     ap.add_argument("-o","--outdir", help="output dir", default='out')
+    ap.add_argument("-nd","--name-dupe", help="create names like they were dupes (with file in name)", action='store_true')
 
     args = ap.parse_args()
     return args
