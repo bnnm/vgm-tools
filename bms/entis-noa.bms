@@ -1,0 +1,42 @@
+# Entis .noa extractor
+
+idstring "Entis"
+goto 0x10
+idstring "ERISA-Archive file"
+goto 0x40
+savepos DATA_START
+
+idstring "DirEntry"
+get CHUNK_SIZE longlong
+
+get FILES long
+
+for I = 0 < FILES
+    get SIZE longlong
+    get UNK longlong
+    get OFFSET longlong
+    get UNK longlong
+    get UNK long
+    get NSIZE long
+    getdstring NAME NSIZE
+
+    math OFFSET += DATA_START
+
+    # test
+    savepos CURRENT
+
+    goto OFFSET
+    idstring "filedata"
+    get CHUNK_SIZE longlong
+    if CHUNK_SIZE != SIZE
+        print "wrong size"
+        exit
+    endif
+    
+    goto CURRENT
+    math OFFSET += 0x10
+
+    log NAME OFFSET SIZE
+    #print "%NAME%: %OFFSET|h% %SIZE|h% "
+next I
+

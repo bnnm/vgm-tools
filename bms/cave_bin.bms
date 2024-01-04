@@ -1,0 +1,47 @@
+# Deathsmiles 1/2 (X360/AC/PC) *.bin
+
+get ID long
+if ID == 0xC0090117
+    endian little
+elif ID == 0x170109C0
+    endian big
+else
+    print "not a valid Cave bigfile"
+    cleanexit
+endif
+
+get FILE_SIZE long
+get DATA_START long
+get FILES long
+getdstring DUMMY 0x14
+
+for I = 0 < FILES
+    get ID short #0..N
+    get FLAG1 byte #related to path? (almost always 1)
+    get FLAG2 byte #2=decompressed, 1=compressed, 0=?
+	get DECSIZE long
+	get ZIPSIZE long
+	get OFFSET long
+	getdstring NAME 0x104
+
+    if ZIPSIZE == 0
+        # regular file (ex. some wavs)
+        log NAME OFFSET DECSIZE
+
+    elif DECSIZE != ZIPSIZE
+        # compressed file, has mini header with DECSIZE + ZIPSIZE + HEADER_SIZE
+        # then header (decompression commands?) and compressed data
+        # each byte in header seems to be a command, ex.:
+        # 00: copy 8
+        # 00: copy 8
+        # 00: copy 8 
+        # 01: copy 7, read data > 0140 = copy 3 bytes at -0c
+        # 01: copy 7, read data > 04 = copy 3 bytes at -23
+        # 40: copy 2, read data > 0020 = copy + repeat x3 byte 80 at -01 (or -11)
+        # ...
+
+        string NAME += ".z"    
+        log NAME OFFSET ZIPSIZE
+    endif
+
+next I
