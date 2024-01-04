@@ -2,34 +2,54 @@
 # may have some issues
 import os, sys
 
-#mode = 'p'
-
+IS_DEBUG1 = False
+IS_DEBUG2 = False
+ZEROFILL = 3
 rootdir = '.'
 
 for filename in os.listdir(rootdir):
-
     basename, ext = os.path.splitext(filename)
 
-    if ext in ['.py']:
+    if ext in ['.py','.7z','.zip']:
         continue
-    if len(basename) < 8:
+    if '[tmp' in filename:
         continue
-    
-    
-    start = basename[:-8]
-    str_hex = basename[-8:]
+    basename2, ext2 = os.path.splitext(basename)
+    if ext2: #double ext
+        basename = basename2
+        ext = ext2 + ext
+
+    pos = basename.rfind('_')
+    if not pos or pos < 0:
+        continue
+    start = basename[0:pos]
+    str_hex = basename[pos+1:]
 
     num_dec = int(str_hex, 16)
-    str_dec = str(num_dec).zfill(8)
+    str_dec = str(num_dec).zfill(ZEROFILL)
 
-    #if mode == 'p':
-    #    new_filename = match.group(1) + "." + match.group(5)
-    #else:
-    # double __ to avoid clashing with not-yet-renamed files
     new_filename = start + "_" + str_dec + ext
-    print(new_filename)
+    print("%s > %s" % (filename, new_filename))
 
-    if os.path.exists(new_filename)==True:
-        print("Error: existing file" + new_filename)
-        sys.exit(0)
-    os.rename(filename, new_filename)
+    # to avoid clashes with bgm_00a > bgm_010 if bgm_010 (bgm_016) already exists
+    new_filename += '[tmp%08x]' % (num_dec)
+
+    if not IS_DEBUG1:
+        if os.path.exists(new_filename):
+            raise ValueError("renamed file exists: " + new_filename)
+        os.rename(filename, new_filename)
+
+for filename in os.listdir(rootdir):
+    basename, ext = os.path.splitext(filename)
+    if ext in ['.py']:
+        continue
+    
+    pos = filename.rfind('[tmp')
+    if not pos or pos <= 0:
+        continue
+
+    new_filename = filename[0:pos]
+    #print(new_filename)
+
+    if not IS_DEBUG2:
+        os.rename(filename, new_filename)
