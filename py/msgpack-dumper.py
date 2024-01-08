@@ -62,7 +62,7 @@ def main():
         try:
             app = MsgpackApp(infile)
             app.print_msgpack()
-        except e:
-            print("couldn't parse: " + e.msg)
+        except Exception  as e:
+            print("couldn't parse: " + str(e))
 
 main()

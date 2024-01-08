@@ -1,4 +1,6 @@
 # GOOGLE'S PROTOCOL BUFFERS SIMPLE PRINTER (https://protobuf.dev)
+# https://protobuf.dev/programming-guides/encoding/
+# https://www.freecodecamp.org/news/googles-protocol-buffers-in-python/
 #
 # Protocol buffers are a generic serialized object format:
 # - define objects in google's text format
@@ -9,7 +11,9 @@
 # - read objects from binary to compiled objects definitions
 # Objects can be printed partially in simple cases, but needs a complete definition
 # for more complex fields. Should be ok enough for json-like key:val.
+import sys, os
 
+DEBUG = False
 _TYPES = {
     0: 'VARINT',
     1: 'I64',
@@ -43,7 +47,6 @@ def parse_varint(data, pos):
 
         if not msb:
             break
-
     return (value, total)
 
 # - string, bytes, embedded messages, packed repeated fields
@@ -95,55 +98,92 @@ TYPE_PARSERS = {
     5: parse_i32,
 }
 def is_string(data):
+    utf_count = 0
+    utf_start = None
     for i in range(len(data)):
         if data[i] < 0x09:
             return False
+        if data[i] >= 0x80:
+            utf_count += 1
+            if utf_start is None:
+                utf_start = i
             
+    if utf_count > 0:
+        if utf_start < 3: #early bytes = protocol buf info
+            return false
+        try:
+            data.decode("utf-8") 
+        except:
+            return False
+
     return True
    
 
-def parse_obj(data, level):
+def parse_obj(data, level, lines):
     pos = 0
     while pos < len(data):
         last_pos = pos
 
-        field_number, wire_type, size = parse_tlv(data, pos)
-        pos += size
+        field_number, wire_type, size1 = parse_tlv(data, pos)
+        pos += size1
 
-        #print("* %s%x: %s [%s]-%x" % (' '*level*2, field_number, data[0:0x10], wire_type, pos) )
-
-        parser = TYPE_PARSERS[wire_type]
-        value, size = parser(data, pos)
-        pos += size
-
-        info_type = _TYPES.get(wire_type)
+        parser = TYPE_PARSERS.get(wire_type, None)
+        if not parser:
+            raise ValueError("parser not implemented: " + str(wire_type) + " - " + str(data[last_pos:last_pos+0x10]))
         
+        info_type = _TYPES.get(wire_type)
+        value, size2 = parser(data, pos)
+        pos += size2
+
+        #if DEBUG:
+        #    print("* %sfld=%x: val=%s [%s]" % (' '*level*2, field_number, value, info_type) )
+
         # may be a string, bytes, or messages
-        # TODO better detection
         if wire_type == 2:
             if is_string(value):
-                value = value.decode("utf-8") 
-                print("%s%x: %s [%s]-0x%x" % (' '*level*2, field_number, value, info_type, last_pos) )
+                text = value.decode("utf-8") 
+                line = '%s%x: %s' % (' '*level*2, field_number, text)
+                lines.append(line)
+                if DEBUG:
+                    print("%s [%s:%x]-0x%x" % (line, info_type, size1+size2, last_pos) )
             else:
-                print("%s%x: %s [%s]-0x%x" % (' '*level*2, field_number, '(message)', info_type, last_pos) )
-                size = parse_obj(value, level+1)
-                pos += size
-        else:
-            print("%s%x: %s [%s]-0x%x" % (' '*level*2, field_number, value, info_type, last_pos) )
+                text = '(message)'
+                line = '%s%x: %s' % (' '*level*2, field_number, text)
+                lines.append(line)
+                if DEBUG:
+                    print("%s [%s:%x]-0x%x" % (line, info_type, size1+size2, last_pos) )
 
+                size = parse_obj(value, level+1, lines)
+                #pos += size
+        else:
+            if isinstance(text, (bytes, bytearray)):
+                text = '(object)'
+            else:
+                text = value
+            line = '%s%x: %s' % (' '*level*2, field_number, text)
+            lines.append(line)
+            if DEBUG:
+                print("%s [%s:%x]-0x%x" % (line, info_type, size1+size2, last_pos) )
 
     return pos
 
-##
-# https://protobuf.dev/programming-guides/encoding/
-# https://www.freecodecamp.org/news/googles-protocol-buffers-in-python/
+def main():
+    if len(sys.argv) <= 1:
+        print("Usage: %s infile" % (os.path.basename(sys.argv[0])))
+        return
+    for infile in sys.argv[1:]:
+        if True:
+        #try:
+            lines = []
+            with open(infile, 'rb') as f:
+                data = f.read()
+            parse_obj(data, 0, lines)
+            with open(infile + '.txt', 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+        #except Exception  as e:
+        #    print("couldn't parse: " + str(e))
 
-#with open('msg.bin', 'wb') as f:
-#    f.write(b'\x08\xd2\t\x12\x03Tim\x1a(\x08\x04\x12\x18Test ProtoBuf for Python\x1a\n31.10.2019')
-
-with open('catalog_decompressed.bin', 'rb') as f:
-    data = f.read()
-parse_obj(data, 0)
+main()
 
 #class MessageObject:
 #    def __init__(self):
