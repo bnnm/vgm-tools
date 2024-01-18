@@ -1,0 +1,34 @@
+# Capcom sspr extractor by bnnm
+
+
+idstring "SSPR"
+get DUMMY long
+
+endian guess DUMMY #ps3 or ps4
+endian save CURRENT_ENDIAN
+if CURRENT_ENDIAN == 0
+    string EXT = ".at9" #ps4
+else
+    string EXT = ".at3" #ps3
+endif
+
+
+get FILES long
+get DUMMY long
+
+for I = 0 < FILES
+    get NAME_OFFSET long
+    get OFFSET long
+    get NAME_SIZE long
+    get SIZE long
+
+    savepos CURRENT
+    goto NAME_OFFSET
+    getdstring NAME NAME_SIZE
+    goto CURRENT
+    
+    string NAME += EXT
+
+    log NAME OFFSET SIZE
+
+next I

@@ -1,4 +1,5 @@
-# RIFF fixer
+# RIFF fixer, mainly for testing/bad rips
+
 
 idstring "RIFF"
 endian little

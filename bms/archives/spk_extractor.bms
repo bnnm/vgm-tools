@@ -1,0 +1,27 @@
+# .spk extract - Judas Code (Vita) by bnnm
+
+endian little
+
+get ID long
+if ID != 0x46534900 #FSI\0
+  print "error"
+  exit
+endif
+
+get DUMMY long
+get FILES long
+get DUMMY long
+
+for I = 0 < FILES
+  get NAME_OFFSET long 
+  get OFFSET long 
+  get SIZE long 
+  get DUMMY long 
+
+  savepos CURRENT
+  goto NAME_OFFSET
+  get NAME string
+  goto CURRENT
+
+  log NAME OFFSET SIZE
+next I

@@ -1,0 +1,164 @@
+# SMK (smacker video) demuxer by bnnm
+
+
+get ID long
+reverselong ID
+if ID != 0x534D4B32 && ID != 0x534D4B34
+   print "not an SMK"
+   exit   
+endif
+
+# get header info
+get DUMMY long
+get DUMMY long
+get FRAMES long
+get FRAME_RATE long
+
+goto 0x14
+get FLAGS long
+
+if FLAGS & 1
+    math FRAMES += 1
+endif
+
+goto 0x34
+get TREES_SIZE long
+
+goto 0x68
+
+set AUDIO_FRAMES long 0
+
+xmath TABLE1_OFFSET " 0x68 "
+xmath TABLE1_SIZE " FRAMES * 0x04 "
+log MEMORY_FILE1 TABLE1_OFFSET TABLE1_SIZE
+
+xmath TABLE2_OFFSET " TABLE1_OFFSET + TABLE1_SIZE "
+xmath TABLE2_SIZE " FRAMES * 0x01 "
+log MEMORY_FILE2 TABLE2_OFFSET TABLE2_SIZE
+
+xmath DATA_OFFSET " TABLE2_OFFSET + TABLE2_SIZE + TREES_SIZE "
+
+# reconstruct frame sizes, types and data so non-audio is skipped
+log MEMORY_FILE3 0 0
+log MEMORY_FILE4 0 0
+log MEMORY_FILE5 0 0
+
+set NEW_FRAMES long 0
+
+# copy audio packets and skip rest and reconstruct tables
+for I = 0 < FRAMES
+
+    get FRAME_SIZE long MEMORY_FILE1 
+    get FRAME_TYPE byte MEMORY_FILE2
+
+    math FRAME_SIZE &= 0xFFFFFFFC  #remove flags
+
+    math OFFSET = DATA_OFFSET
+    math DATA_OFFSET += FRAME_SIZE
+    #print "offset=%OFFSET|h% "
+
+    # skip non-audio frames
+    xmath TEST " FRAME_TYPE & 0xFE " 
+    if TEST == 0 
+        continue  # no audio
+    endif
+
+    math NEW_FRAMES += 1  #audio frames only
+    xmath NEW_TYPE " FRAME_TYPE & 0xFE "   #remove palette flag
+    set NEW_SIZE long 0
+
+    
+
+    # skip palette
+    xmath TEST " FRAME_TYPE & 1 " 
+    if TEST == 1 
+        goto OFFSET 
+        get PALETTE_SIZE byte
+        math PALETTE_SIZE *= 0x04
+        math OFFSET += PALETTE_SIZE
+    endif
+
+
+    # read audio packets and copy to memory file from all 7 possible streams
+    for J = 0 < 7
+        # test if frame has audio packet for stream J
+        xmath STREAM_FLAG " J + 1 "
+        xmath TEST " FRAME_TYPE & (1 << STREAM_FLAG) "
+        if TEST > 0
+            goto OFFSET 
+            get AUDIO_SIZE long
+
+            #print "log: frame=%I%, stream=%J%, offset=%OFFSET|h%, size=%AUDIO_SIZE|h% "
+            append
+            log MEMORY_FILE5 OFFSET AUDIO_SIZE
+            append
+
+            math NEW_SIZE += AUDIO_SIZE
+            math OFFSET += AUDIO_SIZE
+        endif
+    next J
+
+    put NEW_SIZE long MEMORY_FILE3 
+    put NEW_TYPE byte MEMORY_FILE4 
+
+    #print "%I% %OFFSET|h%: %FRAME_SIZE|h%, %FRAME_TYPE|h% "
+next I
+
+#print "new: frames=%NEW_FRAMES%, size=%NEW_SIZE|h% "
+
+if NEW_FRAMES == 0
+    print "file has no audio"
+    exit
+endif
+
+
+# recalculate frame rate for approximate duration
+set NEW_FRAME_RATE long FRAME_RATE
+
+# this looks kinda off and original framerate works ok-ish
+#set NEW_FRAME_RATE long 0
+#if FRAME_RATE > 0
+#    xmath RATIO " FRAMES*1000 / FRAME_RATE "
+#    xmath NEW_FRAME_RATE " NEW_FRAMES*1000 / RATIO "
+#
+#elif FRAME_RATE < 0
+#    math FRAME_RATE n= FRAME_RATE  #needed for xmath
+#    xmath RATIO " FRAMES*100000 / FRAME_RATE "
+#    xmath NEW_FRAME_RATE " NEW_FRAMES*100000 / RATIO "
+#    math NEW_FRAME_RATE n= NEW_FRAME_RATE
+#    #print "FPS: %RATIO%, %NEW_FRAME_RATE%"
+#
+#else
+#   # defaults to 10 fps?
+#endif
+
+
+# copy header and fix some values
+log MEMORY_FILE7 0 0x68
+
+putvarchr MEMORY_FILE7 0x04 0 long #width
+putvarchr MEMORY_FILE7 0x08 0 long #height
+putvarchr MEMORY_FILE7 0x0c NEW_FRAMES long
+putvarchr MEMORY_FILE7 0x10 NEW_FRAME_RATE long
+putvarchr MEMORY_FILE7 0x14 0 long #flags
+putvarchr MEMORY_FILE7 0x34 0 long #trees size
+putvarchr MEMORY_FILE7 0x38 0 long #table size
+putvarchr MEMORY_FILE7 0x3c 0 long #table size
+putvarchr MEMORY_FILE7 0x40 0 long #table size
+putvarchr MEMORY_FILE7 0x44 0 long #table size
+
+get MEM3_SIZE asize MEMORY_FILE3
+get MEM4_SIZE asize MEMORY_FILE4
+get MEM5_SIZE asize MEMORY_FILE5
+append
+log MEMORY_FILE7 0 MEM3_SIZE MEMORY_FILE3
+log MEMORY_FILE7 0 MEM4_SIZE MEMORY_FILE4
+log MEMORY_FILE7 0 MEM5_SIZE MEMORY_FILE5
+append
+
+get MEM7_SIZE asize MEMORY_FILE7
+
+get BASE_NAME basename
+string NAME p= "%s.audio.smk" BASE_NAME 
+
+log NAME 0 MEM7_SIZE MEMORY_FILE7

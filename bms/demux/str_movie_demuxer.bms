@@ -1,0 +1,88 @@
+# .str movie demuxer by bnnm
+#
+# resulting demux removes all video chunks while leaving header, but probably isn't very realistic
+# (decoder has to assume next_size = 0 means skip video block but not audio block)
+
+endian little
+idstring "\x73\x74\x72\x00" #str\0
+
+goto 0x18
+get NEXT_SIZE long
+goto 0x2c
+get AUDIO_BLOCK long
+goto 0x30
+get AUDIO_FIRST long
+
+if NEXT_SIZE == 0
+    print "no video found"
+    exit
+endif
+
+if AUDIO_BLOCK == 0 || AUDIO_FIRST == 0
+    print "no audio found"
+    exit
+endif
+
+math AUDIO_FIRST += 0x800 #header size
+get FILE_SIZE asize
+
+# format is audio then video (last block ends with video)
+
+append #on
+
+math AUDIO_SIZE = AUDIO_FIRST
+
+for OFFSET = 0 < FILE_SIZE
+    log MEMORY_FILE OFFSET AUDIO_SIZE
+
+    math OFFSET += AUDIO_SIZE
+
+    goto OFFSET
+    idstring "GroupOfDataInfo"
+    xmath OFFSET2 "OFFSET + 0x28"
+
+    math OFFSET += NEXT_SIZE
+
+    goto OFFSET2
+    get NEXT_SIZE long
+
+    math AUDIO_SIZE = AUDIO_BLOCK
+next
+append #off
+
+
+# clean header
+set EMPTY long 0 
+PutVarChr MEMORY_FILE 0x14 0 long
+PutVarChr MEMORY_FILE 0x18 0 long
+PutVarChr MEMORY_FILE 0x1C 0 long
+
+get NAME basename
+get EXT extension
+string NAME += ".audio." 
+string NAME += EXT
+get SIZE asize MEMORY_FILE
+
+
+log NAME 0 SIZE MEMORY_FILE
+
+
+#header:
+# 0x10: number of blocks
+# 0x14: highest video chunk
+# 0x18: first video size
+# 0x1c: video data size
+# 0x20: sample  rate
+# 0x24: channels
+# 0x28: interleave
+# 0x2c: audio block
+# 0x10: audio first block
+# 0x34: audio data size
+
+#block:
+# 0x00 GroupOfDataInfo
+# 0x10: block counter
+# 0x14: always 0x10
+# 0x20: flags?
+# 0x24: number of Mpeg2 elements (lowest is 1, min block size 0x800 on last block)
+# 0x28: next size (can be 0 on last block)

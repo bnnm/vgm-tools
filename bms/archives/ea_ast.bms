@@ -1,5 +1,5 @@
 # extracts audiostm.ast banks from Tiger Woods PGA series (X360/PS3)
-# - first use ctrl.bms on files that start with CTRL (often .xen/ps3)
+# - first use ea_ctrl.bms on files that start with CTRL (often .xen/ps3)
 #   - also nbajamfire.bms on files that start with BGFA (often .ast), but needed for music but have banks
 # - find *.astr and *.astm, rename to audiostm.astr and audiostm.astm
 #   (usually in *loadonce.* or *startup.*; if there are multiple .astm, all should have same size and contents)
