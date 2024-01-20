@@ -1,0 +1,110 @@
+# *.DAT extractor for DDR PS2 games
+# tables can be found in the main ELF  (look for size/offsets in sectors,
+# or IDA + find reference to filename + pointer to table)
+
+get FILE_NAME filename
+
+goto 0x38
+get HEAD_SIZE long
+get LOAD_ADDRESS long
+math VERSION = 0
+
+# Dance Dance Revolution SuperNova (US)
+if FILE_NAME == "SLUS_213.77"
+    string DUMP_FILE = "MDB_SN1.DAT"
+    math DUMP_OFFSET = 0x1BDF30
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SOUND.DAT"
+    math DUMP_OFFSET = 0x1B0C10
+    callfunction DUMP_TABLE 1
+endif
+
+# Dancing Stage SuperNOVA 2 (EU)
+if FILE_NAME == "SLES_551.97"
+    math VERSION = 1
+
+    string DUMP_FILE = "MDB_SN2.DAT"
+    math DUMP_OFFSET = 0x275460
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SOUND.DAT"
+    math DUMP_OFFSET = 0x26F040
+    callfunction DUMP_TABLE 1
+endif
+
+# Dance Dance Revolution X (US)
+if FILE_NAME == "SLUS_217.67"
+    string DUMP_FILE = "MDB_X1.DAT"
+    math DUMP_OFFSET = 0x27E6D0
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SOUND.DAT"
+    math DUMP_OFFSET = 0x2777C0
+    callfunction DUMP_TABLE 1
+endif
+
+# Dance Dance Revolution X2 (US)
+if FILE_NAME == "SLUS_219.17"
+    math VERSION = 1
+
+    string DUMP_FILE = "MDB_X1.DAT"
+    math DUMP_OFFSET = 0x1AA510
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SOUND.DAT"
+    math DUMP_OFFSET = 0x1A2C40
+    callfunction DUMP_TABLE 1
+endif
+
+
+
+startfunction DUMP_TABLE
+    open FDSE DUMP_FILE 1 EXISTS
+    if EXISTS == 0
+        print "couldn't find %DUMP_FILE%"
+        #break
+        continue DUMP_DONE
+    endif
+
+    get DUMP_BASENAME basename 1
+    get FILE_SIZE asize 1
+
+    goto DUMP_OFFSET
+    get FILES long
+    for I = 0 < FILES
+        get ID long
+        get TYPE long #01=null, 04=ipu, 09=vig, 14=pss, etc
+        if VERSION > 0
+            get UNK long
+        endif
+        get SIZE long
+        get OFFSET long
+        
+        get NAME_OFFSET long
+        get HASH long
+        get UNK long #07D6?
+        get UNK long # low number (same as others)
+
+        get UNK long
+        get UNK long
+        get UNK long
+        
+
+        math OFFSET *= 0x800
+        math NAME_OFFSET -= LOAD_ADDRESS
+        math NAME_OFFSET += HEAD_SIZE
+        
+        savepos CURRENT
+        goto NAME_OFFSET
+        get NAME string
+        goto CURRENT
+        
+        if NAME == ""
+            string NAME p= "%s_%04i.bin" DUMP_BASENAME I
+        endif
+
+        log NAME OFFSET SIZE 1
+        #print "%NAME%: %OFFSET|h% %SIZE|h%"
+    next I
+endfunction

@@ -1,0 +1,222 @@
+# *.DAT extractor for Pop'n Music PS2 games
+# tables can be found in the main ELF  (look for size/offsets in sectors,
+# or IDA + find reference to filename + pointer to table)
+#
+# There are no filenames, only debug strings about sdstr/sdmem/etc (SD = KCES SoundDriver)
+# but extensions for some formats come from DDR games that do have them (similar formats)
+
+get FILE_NAME filename
+
+# Pop'n Music Best Hits!
+if FILE_NAME == "SLPM_622.88"
+    string DUMP_FILE = "SD_00.DAT"
+    math DUMP_OFFSET = 0x7C440
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SD_01.DAT"
+    math DUMP_OFFSET = 0x799E0
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SD_02.DAT"
+    math DUMP_OFFSET = 0x79DF0
+    callfunction DUMP_TABLE 1
+    
+    #string DUMP_FILE = "MOVFILE.DAT"
+    #math DUMP_OFFSET = 0x?????
+    #callfunction DUMP_TABLE 1
+endif
+
+# Pop'n Music 7
+if FILE_NAME == "SLPM_652.08"
+    string DUMP_FILE = "SD_01.DAT"
+    math DUMP_OFFSET = 0xA1EB0
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SD_02.DAT"
+    math DUMP_OFFSET = 0xA2790
+    callfunction DUMP_TABLE 1
+    
+    #string DUMP_FILE = "MOVFILE.DAT"
+    #math DUMP_OFFSET = 0xA2230
+    #callfunction DUMP_TABLE 1
+endif
+
+# Pop'n Music 8
+if FILE_NAME == "SLPM_653.16"
+    string DUMP_FILE = "SD_01.DAT"
+    math DUMP_OFFSET = 0xB66F0
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SD_02.DAT"
+    math DUMP_OFFSET = 0xB6F00
+    callfunction DUMP_TABLE 1
+    
+    #string DUMP_FILE = "MOVFILE.DAT"
+    #math DUMP_OFFSET = 0xB6AD0
+    #callfunction DUMP_TABLE 1
+endif
+
+# Pop'n Music 9
+if FILE_NAME == "SLPM_655.08"
+    string DUMP_FILE = "SD_01.DAT"
+    math DUMP_OFFSET = 0xC40D0
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SD_02.DAT"
+    math DUMP_OFFSET = 0xC4880
+    callfunction DUMP_TABLE 1
+endif
+
+# Pop'n Music 10
+if FILE_NAME == "SLPM_657.70"
+    string DUMP_FILE = "SDB.DAT"
+    math DUMP_OFFSET = 0xBDF70
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SDS.DAT"
+    math DUMP_OFFSET = 0xBE1A0
+    callfunction DUMP_TABLE 1
+endif
+
+# Pop'n Music 11
+if FILE_NAME == "SLPM_660.65"
+    string DUMP_FILE = "SD.DAT"
+    math DUMP_OFFSET = 0xBF3D0
+    callfunction DUMP_TABLE 1
+endif
+
+# Pop'n Music 12
+if FILE_NAME == "SLPM_663.14"
+    string DUMP_FILE = "SD.DAT"
+    math DUMP_OFFSET = 0xDDB00
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SDP.DAT"
+    math DUMP_OFFSET = 0xE0B40
+    callfunction DUMP_TABLE 1
+endif
+
+# Pop'n Music 13
+if FILE_NAME == "SLPM_665.33"
+    string DUMP_FILE = "SD.DAT"
+    math DUMP_OFFSET = 0x10C420
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SDP.DAT"
+    math DUMP_OFFSET = 0x10C250
+    callfunction DUMP_TABLE 1
+endif
+
+# Pop'n Music 14
+if FILE_NAME == "SLPM_667.42"
+    string DUMP_FILE = "SD.DAT"
+    math DUMP_OFFSET = 0x119F00
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "SDP.DAT"
+    math DUMP_OFFSET = 0x119D30
+    callfunction DUMP_TABLE 1
+endif
+
+
+
+startfunction DUMP_TABLE
+    
+    open FDSE DUMP_FILE 1 EXISTS
+    if EXISTS == 0
+        print "couldn't find %DUMP_FILE%"
+        #break
+        continue DUMP_DONE
+    endif
+
+    goto DUMP_OFFSET
+    get DUMP_BASENAME basename 1
+    get FILE_SIZE asize 1
+    xmath TEST "FILE_SIZE % 0x800" #pop.music 10
+
+    math I = 0
+    for
+        get OFFSET long
+        savepos CURRENT
+        get NEXT_OFFSET long
+        goto CURRENT
+
+        math OFFSET *= 0x800
+        math NEXT_OFFSET *= 0x800
+
+        if NEXT_OFFSET <= OFFSET #usually 0
+            break
+        endif
+        
+        if TEST != 0 AND NEXT_OFFSET > FILE_SIZE
+            math NEXT_OFFSET = FILE_SIZE
+        endif
+
+        #math DONE = 0
+        #if NEXT_OFFSET == 0
+        #    get NEXT_OFFSET asize 1
+        #    math DONE = 1
+        #endif
+
+        xmath SIZE "NEXT_OFFSET - OFFSET"
+
+        callfunction FIND_EXT 1
+        string NAME p= "%s_%04i.%s" DUMP_BASENAME I EXT
+        log NAME OFFSET SIZE 1
+        #print "%NAME%: %OFFSET|h% %SIZE|h%"
+
+        #if DONE == 1
+        #    break
+        #endif
+    next I
+
+DUMP_DONE:
+    math I = 0
+endfunction
+
+startfunction FIND_EXT
+    goto OFFSET 1
+    get ID long 1
+    reverselong ID
+
+    string EXT = "dat"
+
+    # known / official exts
+    if   ID == 0x000001BA
+        string EXT = "pss"
+    elif ID == 0x01006408   # (bgm: p11~14)
+        string EXT = "vig"  # 
+    elif ID == 0x65660100   #"ef\1\0" (banks: p11~12) 
+        string EXT = "swp"
+    elif ID == 0x77700200   #"wp\2\0" (banks: p13~14)
+        string EXT = "swp"  #assumed, same as "ef" .swp
+    elif ID == 0x56495341   #"VISA" (bgm: p7,best)
+        string EXT = "vis"
+
+    # header ids
+    elif ID == 0x50324254   #"P2BT" (bgm: p7~8,best)
+        string EXT = "p2bt"
+    elif ID == 0x4D4F5645   #"MOVE" (bgm: p7~8,best)
+        string EXT = "move"
+    elif ID == 0x47625473   #"GbTs" (bgm: p9~10)
+        string EXT = "gbts"
+    
+    # others/unknown
+    else 
+        if ID == 0x00080000
+            get TEST long 1
+            if TEST == 0x37373737
+                string EXT = "table"
+            endif
+        endif
+ 
+        if ID == 0x10000000 || ID == 0x30000000 || ID == 0x40000000 # (banks)
+            string EXT = "vgmstream" #early version of .swp
+        endif
+
+        if ID == 0x20000000
+            string EXT = "bin" #presumably note info for banks (various)
+        endif
+    endif
+
+endfunction
