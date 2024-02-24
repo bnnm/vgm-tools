@@ -170,8 +170,8 @@ class ExtTagsMaker(object):
         else:
             sorted_files = sorted(self._files, key=sorter)
 
-        with open(self.FILENAME_OUT, 'w', newline="\r\n") as outfile:
-            outfile.write('\xEF\xBB\xBF')#utf8-bom
+        with open(self.FILENAME_OUT, 'w', newline="\r\n", encoding='utf-8-sig') as outfile:
+            #outfile.write('\xEF\xBB\xBF')#utf8-bom
 
 
             for tagname, tagvalue in self._globaltags:
