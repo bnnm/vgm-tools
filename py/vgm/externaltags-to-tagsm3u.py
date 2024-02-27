@@ -4,6 +4,12 @@ import os, argparse, struct
 import collections
 
 
+track_tags = {
+    'TRACK',
+    'TRACKNUMBER',
+    'TOTALTRACKS',
+}
+
 def sorter(item):
     if not item:
         return
@@ -197,7 +203,11 @@ class ExtTagsMaker(object):
                         continue
                     if skips and tagname.upper() in skips:
                         continue
-                
+               
+                    if self._args.autotrack:
+                        if tagname.upper() in track_tags:
+                            continue
+
                     if ' ' in tagname:
                         outfile.write("# %%%s%%  %s\n" % (tagname, tagvalue))
                     else:
