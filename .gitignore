@@ -1,0 +1,27 @@
+.*
+!/.gitignore
+!.gitattributes
+!.github
+*.user
+*.o
+*.a
+
+# gcc (-MMD -save-temps)
+*.d
+*.i
+*.s
+
+# VS stuff
+ipch
+.vs
+*.opensdf
+*.pdb
+*.sdf
+*.suo
+*.v11.suo
+*.v12.suo
+*.vspscc
+*.VC.db
+*.VC.VC.opendb
+**/Debug
+**/Release
