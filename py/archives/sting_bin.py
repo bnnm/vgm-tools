@@ -150,3 +150,4 @@ class StingExtractor:
 
 StingExtractor().extract('data.bin')
 StingExtractor().extract('data2.bin')
+StingExtractor().extract('data_sound.bin')

@@ -8,7 +8,7 @@ def get_zstring(data, pos):
         end += 1
     return data[pos:end]
 
-def parse_bxm(filename):
+def parse_bxm(filename, lines):
     with open(filename, 'rb') as f:
         data = f.read()
 
@@ -27,7 +27,7 @@ def parse_bxm(filename):
     # unknown binary xml format for only need the strings (in shift jis so write as binary)
 
     pos = len(data) - strings_size
-    lines = []
+    #lines = []
     while pos < len(data):
         str = get_zstring(data, pos)
         pos += len(str)
@@ -35,10 +35,16 @@ def parse_bxm(filename):
 
         lines.append(str)
 
-    outname = filename + '.txt'
-    with open(outname, 'wb') as f:
-        f.write(b'\n'.join(lines))
-    
+    #outname = filename + '.txt'
+    #with open(outname, 'wb') as f:
+    #    f.write(b'\n'.join(lines))
+
+lines = []    
 files = glob.glob('*.bxm')
 for file in files:
-    parse_bxm(file)
+    parse_bxm(file, lines)
+
+
+outname = '_bxm.txt'
+with open(outname, 'wb') as f:
+    f.write(b'\n'.join(lines))
