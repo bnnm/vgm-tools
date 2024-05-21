@@ -1,5 +1,13 @@
 # decrypts Inti Creates engine files
 #
+# Usage (older games)
+#   intidec.py *.bigrp -k (game key)
+#
+# Usage (newer games):
+#   intidec.py **/* -lb (game exe) -lo (offset to decryption list inside exe) -k (game key)
+#
+# ---
+#
 # some info inti_encdec tool: https://forum.xentax.com/viewtopic.php?f=32&t=23816
 # this script is similar to the above tool but this allows using free keys 
 # and supports file table decryption used in the latest games
@@ -8,7 +16,9 @@
 # for short filenames, hash is unknown but names are previsible and 
 # c4f76749, 85b3c32d/b845e4c2, 4ddd7369 seem to be the "sound"/"group"/"stream"/etc folders
 #
-# HOW TO FIND LIST-BIN
+# ---
+#
+# HOW TO FIND OFFSET TO BINARY LIST INSIDE THE EXE NEEDED TO DECRYPT NEWER GAMES (A.K.A LIST-BIN)
 # - newer games have a giant filename<>id list that is used to decrypt files
 # - we need to locate the real start of this list so it can be used to decrypt
 # - the list is basically a binary minidatabase embedded in the exe (it's referred internally as a type of 'list')
@@ -34,7 +44,7 @@
 # - apart from the list decryption needs a base key, but it's usually "(blah).oss" so easy to find
 #   - or use strings2.exe and check simple/suspicious strings
 #   - or decompile and see decryption calls
-# - do note that the filenames are hashed, but in list-bin follow the original order
+# - do note that the filenames are hashed, but in binary list-bin follow the original order
 #   (IOW: use them to make an ordered playlist, ex. */4ddd7369/* = ordered streams)
 
 

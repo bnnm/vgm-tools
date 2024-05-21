@@ -13,8 +13,8 @@
 #   suffix: .ogg                                # sets end part for partial URLs
 #   cut: assets/                                # makes folders after (not including) that part, otherwise after host
 #   filter: *.ogg, *bgm/*                       # only downloads from URLs/names that match one of those (comma-separated) filters
-#   header: User-Agent=FakeBrowser              # sets header values that may be verified by host (format: key=value)
-#   header: X-Unity-Version=2019.4.2f1          # another header
+#   header: User-Agent: FakeBrowser             # sets header values that may be verified by host (format: key=value)
+#   header: X-Unity-Version: 2019.4.2f1         # another header
 #   threads: 10                                 # sets max simultaneous downloads (set 1 to disable)
 #   name: path/file.out                         # sets next url's file name (may be defined multiple times)
 #   debug: true                                 # don't download
@@ -108,7 +108,9 @@ class Downloader(object):
 
     def _parse_header(self, config):
         keyval = config.split('=', 1)
-        header = (keyval[0],keyval[1])
+        if len(keyval) == 1:
+            keyval = config.split(':', 1)
+        header = (keyval[0].strip(),keyval[1].strip())
 
         self.headers.append(header)
 

@@ -5,11 +5,11 @@
 # - endianness detection for MGS4
 # - dump .adpcm data directly (use .txth instead):
 #       0x00(4): data size
-#       0x04(2): always 0x7f?
+#       0x04(2): always 0x7f? (volume?)
 #       0x06(2): sample rate
 #       0x08(1): channels
 #       0x09(1): flag? (rare)
-#       0x0a(1): codec (0x00=PSX, 0x01=IMA XOR'ed?, 0x02=adpcm?, 0x11=IMA?)
+#       0x0a(1): codec (0x00=PSX, 0x01=custom pcm8, 0x02=adpcm?, 0x11=MSADPCM)
 #       0x0b(1): null?
 #       0x0c(4): null?
 #       interleave 0x800?
@@ -38,9 +38,9 @@ padding_type_map = {
 # maps ids to extensions (not all are correct)
 extension_map = {
     # "sdx" audio
-    0x00000001: "adpcm",    # ZOE ADPCM?
-    0x00010001: "mta2",     # MSG4 BGM
-    0x00020001: "mta2",     # MSG4 voices
+    0x00000001: "vgmstream",# ZOE/MGS2 audio
+    0x00010001: "mta2",     # MGS4 BGM
+    0x00020001: "mta2",     # MGS4 voices
     0x00030001: "msf",      # MGS3 HD (PS3)
 	0x00040001: "xwma",     # MGS3 HD (X360)
 	0x00050001: "9tav",     # MGS3 HD (Vita)
@@ -123,7 +123,7 @@ class Reader(object):
        else:
            return self.get_u32le(offset)
 
-def get_extension(block_id, basename):
+def get_extension(block_id):
     if block_id in extension_map:
         extension = ".%s" % (extension_map[block_id])
     else:
@@ -139,7 +139,8 @@ def extract_sdt(sdt_path, filter_type, filter_subtype):
 
     sdt = open(sdt_path, "rb")
     sdt_size = os.path.getsize(sdt_path)
-    basename = os.path.splitext(sdt_path)[0]
+    basename = os.path.splitext(os.path.basename(sdt_path))[0]
+    basedir = os.path.dirname(sdt_path)
 
     # detect endianness
     buf = sdt.read(0x10)
@@ -213,18 +214,24 @@ def extract_sdt(sdt_path, filter_type, filter_subtype):
                     counts[block_id] = 0
                 subfile_num = counts[block_id]
 
-                path = basename
+                path = basedir + '/' + basename + '/'
                 
+                try:
+                    os.makedirs(path)
+                except:
+                    pass
+
+                path += basename
                 if is_dat:
-                    path += "__%04i" % (total_files)
+                    path += "_%04i" % (total_files)
                 elif subfile_num > 0:
-                    path += "__%04i" % (subfile_num)
+                    path += "_%04i" % (subfile_num)
                 total_files += 1
 
-                path += get_extension(block_id, basename)
+                path += get_extension(block_id)
                 print("created: %s" % (os.path.split(path)[1]))
 
-                streams[block_id] = open(path, "w+b")
+                streams[block_id] = open(path, "wb")
 
         else:
             write_block = True
