@@ -13,12 +13,14 @@ fourcc_type = {
     b'OggS': 'ogg',
     b'AFS2': 'awb',
     b'AKB ': 'akb',
-    b'AFS\0': 'adx',
-    b'BKHD': 'bkhd',
+    b'AFS\0': 'afs',
+    b'BKHD': 'bnk',
+    b'AKPK': 'apk',
     b'sabf': 'sab',
     b'Unit': 'unity',
     b'MThd': 'midi',
     b'CPK ': 'cpk',
+    b'CRID': 'usm',
     b'srcd': 'srcd', #reengine
     b'KTSR': None, #manual
     b'KTSC': 'ktsc',
@@ -104,13 +106,12 @@ def main():
         header = Reader(data)
 
         type = ""
-        channels = 0
+        channels = None
+        srate = None
         id = header.get_u32be(0x00)
         id2 = header.get_u32be(0x04)
         fourcc = data[0:4]
         fourcc2 = data[4:8]
-       
-        channels = 0
 
         type = fourcc_type.get(fourcc)
         if not type:
@@ -118,6 +119,8 @@ def main():
 
         if ((id & 0xFFFF0000) == 0x80000000):
             type = "adx"
+            channels = header.get_u8(0x07)
+            srate = header.get_u32be(0x08)
 
         if ((id & 0x7f7f7f7f) == 0x48434100): # HCA
             channels = header.get_u16le(0x0c)
@@ -135,8 +138,6 @@ def main():
             #print("unknown file %s" % filename)
             continue
 
-        
-        channels = None
         subdir = ''
         if fourcc == b'XWAV':
             streams = header.get_u8(0x27)
@@ -156,6 +157,8 @@ def main():
 
         if channels:
             subdir = subdir + '%ich' % (channels)
+        if srate:
+            subdir = subdir + '-%i' % (srate)
 
         if subdir:
             dir = "%s/%s" % (type, subdir)

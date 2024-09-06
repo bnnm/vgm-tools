@@ -1,0 +1,29 @@
+how this stuff was reverse engineered, for posterity
+(note, some files just XOR'd the first bytes but they don't have audio so I ignored them)
+
+- use Il2CppDumper with decompressed Switch "main" + global-metadata.dat to get script Json DummyDlls
+- decompile "main" with IDA (decompress + install DLL plugin to handle Switch's NSO exes)
+- wait a long time
+- apply ida_py3.py and script.json
+- also wait
+- poke around and find F7_Scripts_AddressablesCustom_SeekableAesStream, good candidate
+  - there is also XorStream for simpler xor'd Unity files
+- inside it calls F7_Scripts_AddressablesCustom_SeekableAesStream__bseh that setups AES:
+  - uses PassWordDeriveBytes(pass, salt) to get final key
+  - aes = AesManaged
+    aes.KeySize = 128; 
+    aes.Mode = CipherMode.ECB;  //2
+    aes.Padding = PaddingMode.None;  //1
+  - missing pass + salt
+- find calls to F7_Scripts_AddressablesCustom_SeekableAesStream
+- salt seems to be gotten from System_IO_Path__ChangeExtension(FileName, 0) which removes extension from filename
+- key seems to be gotten from PrivateImplementationDetails__67938732_9553_4E8D_AD0F_DED1661FF4EB__a__fk which is complex and hard to understand where the key is found
+- functions that call Private....__a__fk are: fsj__bsdq and uk__jfo
+- using ILSpy open decompiled DummyDll/Assembly-CSharp.dll
+- find those clases/functions (just "uk" and "fsj"), they have references to some key-looking value (functions were probably getters)
+- both have "DtUp!43AZH46@*fj768GCM@ajNvEdBEB"
+- try some simple C# decryptor and see if AES /w and that key/salt works
+- doesn't seem to work and returns an block padding error
+- all files aren't padded to 0x10 while AES-ECB is padded > must be using AES-CTR mode (stream cypher)
+- C# doesn't seem to have a CTR implementation?, reimplement using AES-ECB to make AES-CTR 
+- success (returns regular unity files)
