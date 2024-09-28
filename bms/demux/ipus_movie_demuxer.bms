@@ -1,0 +1,52 @@
+# PS2 IPUS (.ips/.ipf) movie demuxer (by bnnm)
+#
+# resulting raw audio needs .txth (may be PCM or PS-ADPCM, no info in header)
+# format M chunks with header (sizes) then video then audio
+
+endian little
+
+idstring "IPUS"
+get WIDTH short
+get HEIGHT short
+get FRAMES long
+get FRAME_SIZE long
+get TEST long #0x01 or 0x40
+
+if TEST == 0x01
+    math START = 0x14
+elif TEST == 0x40
+    math START = 0x40
+else
+    print "unknown format"
+    exit
+endif
+
+get FILE_SIZE asize
+
+append #on
+for POS = START < FILE_SIZE
+    goto POS
+    get VIDEO_SIZE long
+    get AUDIO_SIZE long
+
+    if AUDIO_SIZE != 0 #always?
+        savepos AUDIO_OFFSET
+        math AUDIO_OFFSET += 0x38
+        math AUDIO_OFFSET += VIDEO_SIZE
+        log MEMORY_FILE AUDIO_OFFSET AUDIO_SIZE
+    endif
+
+    math POS += FRAME_SIZE
+next
+append #off
+
+
+get NAME basename
+string NAME += ".audio.vgmstream" 
+get SIZE asize MEMORY_FILE
+if SIZE == 0
+  print "File doesn't contain audio"
+  cleanexit
+endif
+
+log NAME 0 SIZE MEMORY_FILE
