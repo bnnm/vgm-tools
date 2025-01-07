@@ -10,7 +10,9 @@ STEPS:
 
 - modify current-url.txt if needed
   - current is loaded using an API but too much effort to reverse, can be gotten via memdumps/etc
-  - as of v1.18.1 / 2023-04
+  - memdump:
+    - look for "Host: xxxxxx.cloudfront.net" get calls and a GET GET /axs/assetbundles/android/xxxxxxxxxx/... number nearby
+    - edit current-url.txt
 
 - launch urls.py
   - this will download + decrypt ablist.json if not found (delete it to redownload)

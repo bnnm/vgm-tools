@@ -1,0 +1,537 @@
+# Ubisoft "scimitar" (.forge) extractor by bnnm
+#
+# Forge archives contain N files, referenced by hash. They can be compressed or not.
+# Compressed files start with 0x1004FA9957FBAA33 and have a compressed header
+# (list of hashes + sizes for files in body) and compressed body.
+#
+# See config below.
+#
+# modified from aluigi/AnonRunzes's extractor
+# also see http://wiki.tbotr.net/index.php?title=Assassins_Creed:Forge_Files
+#          https://github.com/theawesomecoder61/Blacksmith/blob/master/Blacksmith/Games/Odyssey.cs#L40
+#          https://github.com/theawesomecoder61/Blacksmith/blob/master/Blacksmith/FileTypes/Forge.cs
+#          https://github.com/darthnithin/R6-Unpacker/blob/master/r6s/forge.py
+#          https://github.com/parzivail/RainbowForge
+#
+###############################################################################
+
+# dump decompressed or original file
+math DECOMPRESS_FILES = 1
+
+# dump all into a single big archive (useful for debug/string searching when decompressing)
+# .forge have *many* files, so writting separate files to a dir is *very* slow
+# TODO: uses multiple .dump files since quickbms file stuff doesn't work too well with giant files
+math DUMP_SOLID = 1
+
+# controls many temp dump files are created in a solid doum
+math DUMP_MAX = 0x10000000 # ~512MB (more seems to cause alloc errors at times, lower if needed)
+math CURRENT_DUMP = 0
+
+# bigger offsets seen in AC:Valhalla, unsure if all all 0x1D use this (may be removed?)
+math COMPRESSED_ALT = 1
+
+###############################################################################
+
+get FORGE_NAME basename
+
+#math EXPECTED_TOTAL = 0
+
+if DUMP_SOLID == 1
+    log MEMORY_FILE9 0 0                #reset
+    putvarchr MEMORY_FILE9 DUMP_MAX 0   #prealloc
+    log MEMORY_FILE9 0 0                #reset
+endif
+
+callfunction EXTRACT_FORGE 1
+
+if DUMP_SOLID == 1
+    get DUMP_SIZE asize MEMORY_FILE9
+    if DUMP_SIZE > 0
+        callfunction DUMP_DUMPFILE 1
+    endif
+#endif
+
+###############################################################################
+
+# versions
+# 0x19: AC Brotherhood X360, AC Revelations X360
+# 0x1B: AC Rogue X360, AC3 X360
+# 0x1D: AC Valhalla PC
+# 0x20: Rainbow Six Siege PC
+
+startfunction EXTRACT_FORGE
+    endian little
+
+    # base header
+    idstring "scimitar\x00"
+    get FORGE_VERSION long
+    get FORGE_DATA_OFFSET longlong
+    get UNKNOWN long            #always 0x10, version?
+    if FORGE_VERSION >= 0x1B #TODO not in 0x19, unsure about 0x1A
+        get UNKNOWN long        #null?
+    endif
+    get FORGE_FLAGS byte        #01/02?
+    #get UNKNOWN long           #more flags?
+    #                           # AC Revelations/Rogue: null
+    #                           # AC Valhalla: BE 0x03011823 / 0x03030027
+    #                           # RS Siege: not used (data starts at this offset)
+    # rest is padding
+
+    goto FORGE_DATA_OFFSET
+
+    # table header: N sections each with M files (OFFSET/SIZE)
+    # more than 1 section is rare though
+    get TOTAL_FILES long
+    get TOTAL_UNKNOWN long #0/1/2?
+    get DUMMY long #0
+    get DUMMY long #0
+    if FORGE_VERSION >= 0x1B
+        get DUMMY long #0/-1?
+    endif
+
+    get DUMMY longlong #-1
+
+    get SECTION_FILES_MAX long # may be more than TOTAL_FILES, less than 5000
+    get SECTION_COUNT long
+    get SECTION_NEXT longlong
+
+    # parse sections
+    set FILE_COUNT long 0
+    for 
+        goto SECTION_NEXT long
+
+        get SECTION_FILES long              # can be 0
+        get SECTION_UNKNOWN long            # flags? 0/2
+        get SECTION_START longlong          # where files start
+        get SECTION_NEXT longlong           # 
+        get SECTION_FILE_MIN long           # -1/0/5000/etc (position within total)
+        get SECTION_FILE_MAX long           # -1/4999/9999/etc
+        get SECTION_NAMES_OFFSET longlong   #some kind of index table
+        get SECTION_DATA_OFFSET longlong
+
+        #savepos SECTION_FILES_OFFSET
+        callfunction EXTRACT_SECTION 1
+
+        math FILE_COUNT += SECTION_FILES
+
+        if SECTION_NEXT <= 0 #should be -1 on last section
+            break
+        endif
+
+        #print "more sections found"
+    next
+
+    if FILE_COUNT != TOTAL_FILES
+        print "WARNING! wrong FILE_COUNT=%FILE_COUNT% vs TOTAL_FILES=%TOTAL_FILES%"
+    endif
+
+endfunction
+
+
+startfunction EXTRACT_SECTION
+    # don't put into array as some .forge have tons of files
+    for FILE_NUM = 0 < SECTION_FILES
+        if FORGE_VERSION >= 0x1B
+            get OFFSET longlong
+            get HASH1 long
+            get HASH2 long
+            get SIZE long
+        else
+            get OFFSET longlong
+            get HASH1 long
+            set HASH2 long 0
+            get SIZE long
+        endif
+    
+        savepos FILE_CURRENT
+
+        callfunction EXTRACT_NAME 1
+
+        #print "O=%OFFSET|h%, S=%SIZE|h% %NAME%"
+        callfunction EXTRACT_FILE 1
+
+        goto FILE_CURRENT
+    next FILE_NUM
+
+endfunction
+
+
+startfunction EXTRACT_NAME
+
+    if SECTION_NAMES_OFFSET <= 0 #may be -1
+        string NAME = ""
+    else
+        if FORGE_VERSION >= 0x1D
+            math ENTRY_SIZE = 0x140
+        elif FORGE_VERSION >= 0x1B
+            math ENTRY_SIZE = 0xC0
+        else
+            math ENTRY_SIZE = 0xBC
+        endif
+        
+        xmath NAME_OFFSET "SECTION_NAMES_OFFSET + (ENTRY_SIZE * I)"
+        goto NAME_OFFSET
+
+        if FORGE_VERSION >= 0x1D
+            #empty?
+            string NAME = ""
+
+            #print "untested: %NAME_OFFSET|h%"
+#            get UNKNOWN_SIZE long
+#            get UNKNOWN longlong
+#            get UNKNOWN long
+
+#            get UNKNOWN long
+#            get UNKNOWN long
+#            get UNKNOWN long
+#            get UNKNOWN long
+
+#            get UNKNOWN long
+#            get UNKNOWN long
+#            get UNKNOWN long
+#            get UNKNOWN long
+#            getdstring UNKNOWN 0x110
+        else
+            # 0xC0
+            get ORIGINAL_SIZE long #filesize
+            get HASH longlong       
+            get DUMMY long
+
+            get FILE_TYPE1 long     # hash?
+                                    # 0xAC2BBF68=data block
+                                    # 0xA2B7E917=particles/maps
+                                    # 0xE55F39F1=animations
+                                    # etc
+            get DUMMY longlong
+            get PREV_INDEX long     # (first = -1)
+
+            get NEXT_INDEX long     # (last = -1)
+            get DUMMY long
+            get FILE_TYPE2 long     # extension?
+
+            getdstring NAME 0x80    #may be null
+
+            # TODO: which is not used?
+            get UNKNOWN long #02/04
+            get UNKNOWN long #0
+            get UNKNOWN long #0
+            get UNKNOWN long #02/04
+            
+            if FORGE_VERSION >= 0x1B
+                get UNKNOWN long #0/1
+            endif
+        endif
+
+        #print "%SECTION_NAMES_OFFSET|h% + %ENTRY_SIZE|h% * %I% = %NAME_OFFSET|h%"
+        #print "%NAME%"
+    endif
+
+endfunction
+
+startfunction EXTRACT_FILE
+	goto OFFSET
+    
+    if FORGE_VERSION >= 0x1D
+		math ACTUAL_OFFSET = OFFSET
+		math ACTUAL_SIZE = SIZE
+
+    elif FORGE_VERSION >= 0x1B
+        math ACTUAL_OFFSET = OFFSET
+        math ACTUAL_SIZE = SIZE
+
+		if FORGE_FLAGS == 1
+            #get DUMMY long
+
+			math ACTUAL_OFFSET += 0x04
+			math ACTUAL_SIZE -= 0x04
+		endif
+
+		if FORGE_FLAGS == 2
+            #get UNKNOWN long #flags/0x04?
+            #get DUMMY long #empty?
+
+			math ACTUAL_OFFSET += 0x08
+			math ACTUAL_SIZE -= 0x08
+		endif
+	else
+		idstring "FILEDATA"
+		getdstring FILEDATA_NAME 0x80   #same as in name table
+		getdstring PADDING 0xff
+
+		get UNKNOWN long                #hash or 0x10 for some?
+		get ACTUAL_SIZE long            #same as in name table
+		get ACTUAL_HASH longlong        #same as in file list (hash1/hash2)
+
+		get DUMMY long
+		get DUMMY long
+		get DUMMY long
+		get UNKNOWN long            #flags? 0x04
+
+		get UNKNOWN long            #flags? 0x04
+		get DUMMY long
+		get ACTUAL_TYPE long #same as in name table
+		get DUMMY long
+
+		get DUMMY byte
+
+		if ACTUAL_SIZE == 0
+			math ACTUAL_SIZE = SIZE
+			# todo: validate the "extraction" process when the SIZE value is ultimately 0
+		endif
+
+		savepos ACTUAL_OFFSET
+
+        #TODO test more #only seen 0x19
+		if FORGE_FLAGS == 1
+            #get DUMMY long #empty?
+
+			math ACTUAL_OFFSET += 0x04
+			math ACTUAL_SIZE -= 0x04
+		endif
+	endif
+
+    # get file container (usually compressed)
+    goto ACTUAL_OFFSET
+    get CONTAINER_ID long #LE / BE longlong
+    #print "FILE=%ACTUAL_OFFSET|h%, %ACTUAL_SIZE|h%"
+
+    # 0x1004FA9957FBAA33 compressed (saved in machine endianness)
+    # 0x1015FA9957FBAA37 same (RSSiege)
+    # 0x1014FA9957FBAA34 same (RSSiege)
+    if CONTAINER_ID == 0x57FBAA33 || CONTAINER_ID == 0x57FBAA37 || CONTAINER_ID == 0x57FBAA34
+        math IS_CONTAINER = 1
+        math IS_BE = 0
+    elif CONTAINER_ID == 0x99FA0410
+        math IS_CONTAINER = 1
+        math IS_BE = 1
+    else
+        math IS_BE = 0
+        math IS_CONTAINER = 0
+
+        xmath CONTAINER_TEST "CONTAINER_ID & 0xFFFFFF00"
+        if CONTAINER_TEST == 0x57FBAA00
+            print "unknown compressed file found at %ACTUAL_OFFSET|h%"
+        endif
+    endif
+
+    # 
+    if NAME != ""
+        string ARCHIVE_NAME p= "%08i_%08x%08x_%s" FILE_NUM HASH2 HASH1 NAME
+    else
+        string ARCHIVE_NAME p= "%08i_%08x%08x" FILE_NUM HASH2 HASH1
+    endif
+    #print "%ARCHIVE_NAME%"
+
+    if DECOMPRESS_FILES == 1 && IS_CONTAINER == 1
+        callfunction EXTRACT_FILE_CONTAINER 1
+    else
+        callfunction EXTRACT_FILE_NORMAL 1
+    endif
+
+    if DUMP_SOLID == 1 
+        get DUMP_SIZE asize MEMORY_FILE9
+        if DUMP_SIZE >= DUMP_MAX
+            callfunction DUMP_DUMPFILE 1
+        endif
+    endif
+
+endfunction
+
+# containers have chunked header + chunked data
+# after dechunking the header (index) is used to point to subfiles in data
+#
+# index format:
+# - 00: files
+# per file
+# - 00 file type (see RainbowForge StaticUid, but doesn't seem correct)
+# - 04 subtype? (part of file type 64b?)
+#   both 00-04 may be repeated in multiple files, but similar files have slightly different values
+#   9535C5E9 / F136C5E9 / 0534C5E9 / CF88EFC0 / 9B33C5E9 LE are all Wwise .bnk
+# - 08 size + flags (0x40xxxxxx)
+# - 0c (optional) GUID if flag is set (size 0x10)
+#
+# file format (some indexes don't have files, probably depends on external info)
+# - 00: name size (may be 0)
+# - 02: ? (0 or low number)
+# - 04: encrypted file name (see RainbowForge NameEncoding.cs)
+# - name + 00: data size (after type)
+# - name + 04: data type, ex 0x82688E42 = .bnk (see Magic.cs)
+#   * types are the CRC32 of the String, there are MANY of them
+# rest is actual data that varies per type, but often:
+# - 00: file type (same as index)
+# - 04: subtype? (same as index)
+# - 08: data type (same as file info)
+# after last file next one somes (needs to use sizes in index)
+
+startfunction EXTRACT_FILE_CONTAINER
+
+    xmath MAX_OFFSET "ACTUAL_OFFSET + ACTUAL_SIZE"
+
+    if IS_BE == 1
+        endian big
+    else
+        endian little
+    endif
+
+    goto ACTUAL_OFFSET
+    for PACK = 0
+        # possible in a few indexes with only 1 pack (near EOF?)
+        savepos CURRENT_OFFSET
+        if CURRENT_OFFSET u>= MAX_OFFSET
+            #if PACK < 2
+            #    print "empty container %PACK% at O=%ACTUAL_OFFSET|h% "
+            #endif
+            break
+        endif
+
+        # read file header: N compressed chunks
+        get ID longlong
+        get VERSION short
+        get ZTYPE byte
+
+        get MAX_SIZE short
+        get MAX_ZSIZE short
+        if FORGE_VERSION >= 0x1D && COMPRESSED_ALT == 1
+            get CHUNKS long
+        else
+            get CHUNKS short
+        endif
+
+        # seen in RS:S for copy chunks, maybe "not compressed" flag?
+        xmath CHUNK_FLAG "CHUNKS & 0xF0000000"
+        xmath CHUNKS "CHUNKS & 0x0FFFFFFF"
+
+        for CHUNK = 0 < CHUNKS
+            if FORGE_VERSION >= 0x1D && COMPRESSED_ALT == 1
+                get CHUNK_SIZE long
+                get CHUNK_ZSIZE long
+            else
+                get CHUNK_SIZE short
+                get CHUNK_ZSIZE short
+            endif
+
+            putarray 8 CHUNK CHUNK_SIZE
+            putarray 9 CHUNK CHUNK_ZSIZE
+        next CHUNK
+
+
+        # decompress chunks
+        if ZTYPE == 0x01
+            comtype lzo1x
+        elif ZTYPE == 0x02
+            comtype lzo2a
+        elif ZTYPE == 0x03
+            if IS_BE != 0
+                comtype xmemdecompress
+            else
+                comtype zstd
+            endif
+        elif ZTYPE == 0x05
+            comtype lzo1c
+        elif ZTYPE == 0x07 #another oodle mode? (RS:S)
+            comtype oodle
+        elif ZTYPE == 0x08 #another oodle mode? (common)
+            comtype oodle
+        elif ZTYPE == 0x0A #another oodle mode? (AC:V)
+            comtype oodle
+        elif ZTYPE == 0x0f #another oodle mode? (RS:S)
+            comtype oodle
+        else
+            print "Error: unknown compression type %ZTYPE|h% in file %ACTUAL_OFFSET|h%"
+            exit
+        endif
+
+        savepos CHUNK_OFFSET
+
+        math PRE_ALLOCATE = MAX_SIZE
+        math PRE_ALLOCATE *= CHUNKS
+        putvarchr MEMORY_FILE PRE_ALLOCATE 0
+        log MEMORY_FILE 0 0
+
+        append
+        for CHUNK = 0 < CHUNKS
+            getarray CHUNK_SIZE  8 CHUNK
+            getarray CHUNK_ZSIZE 9 CHUNK
+
+            get CHUNK_CRC long
+            math CHUNK_OFFSET += 0x04
+            if CHUNK_SIZE == CHUNK_ZSIZE #less common but possible
+                log MEMORY_FILE CHUNK_OFFSET CHUNK_SIZE
+            else
+                #print "DEC %CHUNK_OFFSET|h% %CHUNK_ZSIZE|h% to %CHUNK_SIZE|h%"
+                clog MEMORY_FILE CHUNK_OFFSET CHUNK_ZSIZE CHUNK_SIZE
+            endif
+            math CHUNK_OFFSET += CHUNK_ZSIZE
+        next CHUNK
+        append
+        
+        goto CHUNK_OFFSET
+        get PACK_SIZE asize MEMORY_FILE
+
+        #if PACK == 0
+        #    goto 0 MEMORY_FILE
+        #    get INDEX_COUNT long MEMORY_FILE
+        #    if INDEX_COUNT > 1
+        #        print "more than 1 chunks at index O=%CURRENT_OFFSET|h% "
+        #    endif
+        #endif
+
+        if DUMP_SOLID == 1
+            append
+            if PACK == 0
+                put 0x58444E49 long MEMORY_FILE9 #INDX
+            else
+                put 0x454C4946 long MEMORY_FILE9 #FILE
+            endif
+            put CURRENT_OFFSET long MEMORY_FILE9
+            log MEMORY_FILE9 0 PACK_SIZE MEMORY_FILE
+            append
+        else
+            string NAME p= "%s.bin%i" ARCHIVE_NAME PACK
+            log NAME 0 PACK_SIZE MEMORY_FILE
+        endif
+
+        # shouldn't happen
+        if PACK > 1
+            print "WARN: more than 2 packs"
+        endif
+    next PACK
+
+    endian little
+endfunction
+
+
+startfunction EXTRACT_FILE_NORMAL
+
+    string NAME = ARCHIVE_NAME
+    if IS_CONTAINER == 1
+        string NAME += ".zbin"
+    else
+        string NAME += ".bin"
+    endif
+
+    if DUMP_SOLID == 1
+        append
+        put 0x454C4946 long MEMORY_FILE9 #FILE
+        put FILE_NUM long MEMORY_FILE9
+        log MEMORY_FILE9 ACTUAL_OFFSET ACTUAL_SIZE
+        append
+    else
+        log NAME ACTUAL_OFFSET ACTUAL_SIZE
+    endif
+
+endfunction
+
+startfunction DUMP_DUMPFILE
+
+    get DUMP_SIZE asize MEMORY_FILE9
+
+    string NAME p= "%s.%02i.dump" FORGE_NAME CURRENT_DUMP
+    log NAME 0 DUMP_SIZE MEMORY_FILE9
+    math CURRENT_DUMP += 1
+
+    log MEMORY_FILE9 0 0                #reset
+    putvarchr MEMORY_FILE9 DUMP_MAX 0   #prealloc
+    log MEMORY_FILE9 0 0                #reset
+
+endfunction
