@@ -11,17 +11,40 @@ startfunction EXTRACT_FILE
     goto 0
     findloc OFFSET string EXTRACT_FILE_ARG1 0 ""
     if OFFSET != ""
-        math OFFSET -= 0x14
-        goto OFFSET
-        get TEST long
-        get SIZE long
-        math OFFSET += 0x14
-
+        math RIP_OK = 0
         get NAME basename
         string NAME += EXTRACT_FILE_ARG2
 
-        if TEST == 0
+        if RIP_OK == 0
+
+            math OFFSET -= 0x0c
+            goto OFFSET
+            get TEST long
+            get SIZE long
+            get SIZE2 long
+            math OFFSET += 0x0c
+
+            if TEST == 0 && SIZE == SIZE2
+                math RIP_OK = 1
+            endif
+        endif
+
+        if RIP_OK == 0
+            math OFFSET -= 0x14
+            goto OFFSET
+            get TEST long
+            get SIZE long
+            math OFFSET += 0x14
+
+            if TEST == 0 AND SIZE >= 0x40
+                math RIP_OK = 1
+            endif
+        endif
+
+        if RIP_OK == 1
             log NAME OFFSET SIZE
         endif
+
+
     endif
 endfunction

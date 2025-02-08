@@ -136,13 +136,14 @@ startfunction EXTRACT_FILE
         # https://github.com/yretenai/Cethleann/blob/develop/Cethleann/Compression/Scramble/RDBEncryption.cs
         print "encrypted entry"
     
-    elif IS_LZ4 != 0
-        print "lz4 entry"
-
     elif IS_EXTERNAL == 0 && IS_INTERNAL == 0
         # external/internal flags mean this entry is just an index and not a file
-        if IS_ZLIB != 0 || IS_MINIZLIB != 0
-            comtype ZLIB
+        if IS_ZLIB != 0 || IS_MINIZLIB != 0 || IS_LZ4 != 0
+            if IS_LZ4 != 0 
+                comtype LZ4
+            else
+                comtype ZLIB
+            endif
 
             math CHUNK_SIZE = 0x00004000
             log MEMORY_FILE 0 0

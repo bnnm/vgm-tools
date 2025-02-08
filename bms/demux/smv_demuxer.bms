@@ -1,0 +1,38 @@
+# Namco .SMV demuxer (Seven / Venus & Braves )
+
+get FILE_NAME filename
+string VIDEO_NAME p= "%s.m2v" FILE_NAME
+string AUDIO_NAME p= "%s.vgmstream" FILE_NAME
+get FILE_SIZE asize
+
+set BLOCK_SIZE long 0x800
+
+
+append #on
+for OFFSET = 0 < FILE_SIZE
+  goto OFFSET
+  get NEXT_BLOCK_SIZE long
+  get VIDEO_SIZE long
+  get AUDIO_SUBOFFSET long
+  get AUDIO_SIZE long
+
+  # first block usually empty
+  if VIDEO_SIZE != 0
+    set VIDEO_OFFSET long OFFSET
+    math VIDEO_OFFSET += 0x10
+
+    log VIDEO_NAME VIDEO_OFFSET VIDEO_SIZE
+  endif
+
+  if AUDIO_SIZE != 0
+    set AUDIO_OFFSET long OFFSET
+    math AUDIO_OFFSET += AUDIO_SUBOFFSET
+
+    log AUDIO_NAME AUDIO_OFFSET AUDIO_SIZE
+  endif
+
+  math OFFSET += BLOCK_SIZE
+  set BLOCK_SIZE long NEXT_BLOCK_SIZE
+
+next
+append #off
