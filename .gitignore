@@ -25,3 +25,8 @@ ipch
 *.VC.VC.opendb
 **/Debug
 **/Release
+
+*.wav
+*.bin
+*.rio
+*.oor
