@@ -2,6 +2,7 @@
 #
 # helps finding FSB5 keys, with some human intervention. Miniguide:
 # - call: fsb5-keyhelper.py (file)
+#   - should work with .fsb and .bank
 #   - tool is kinda slow, use -o and -s flags with giant files
 # - this should create (file).key
 # - open .key with a hex editor
@@ -25,6 +26,12 @@
 #     1c: usually 0
 #     20: flags?
 #     24: hashes, data, etc
+#
+# For fsb3/4 keys try guessfsb:
+# - https://hcs64.com/files/guessfsb03.zip
+# - https://hcs64.com/files/guessfsb04beta.zip
+# (FSB5 was introduced in ~2009, but FSB4 is common until ~2016)
+
 
 import sys, argparse, struct
 
