@@ -7,15 +7,15 @@
 # - this should create (file).key
 # - open .key with a hex editor
 # - look for patterns to find the correct key
-#   - key is typically smaller than 0x20 then repeats until file end
+#   - key is typically smaller than 32 chars then repeats until file end
 #   - the first 8 bytes in .key should be correct, then until 0x20 a few bytes will be ok too
 #   - most files have parts with many 0s, which means keys should be seen multiple times in the file
 #     (look for those first 8 bytes and see repeated patters)
 #   - keys are often in the exe or helper files too, so look for the first 8 chars in those files too
-# - when you have a potential correct key: fsb5-keyhelper.py (file) -k (key)
-# - this should create (file).dec.fsb
-# - try to play it in vgsmtream; if it doesn't play tweak the key 
-#   - open the .fsb with hex and see obvious wrong values compared to an expected FSB5 structure (LE):
+# - when you have a potential correct key make .fsbkey and paste the text key inside (without line feed)
+# - try to play it in vgsmtream; if it doesn't play tweak the key until it does
+# - if still wrong use fsb5-keyhelper.py (file) -k (key), which should create (file).dec.fsb
+#  - open the .fsb with hex and see obvious wrong values compared to an expected FSB5 structure (LE):
 #     00: FSB5
 #     04: version (1, rarely 0)
 #     08: total subsongs
@@ -27,7 +27,10 @@
 #     20: flags?
 #     24: hashes, data, etc
 #
-# For fsb3/4 keys try guessfsb:
+# Note that this tool was quickly pieced together from test stuff and is ugly and slow (but works)
+#
+# For fsb3/4 keys use flag -t 3 and -t 4, but only first 0x04 bytes are 100% accurate (but you may 
+# still find patterns). guessfsb also works:
 # - https://hcs64.com/files/guessfsb03.zip
 # - https://hcs64.com/files/guessfsb04beta.zip
 # (FSB5 was introduced in ~2009, but FSB4 is common until ~2016)
@@ -135,8 +138,10 @@ class Decryptor(object):
             self.decrypt(data)
         else:
             self.reverse(data)
-            
+
     def decrypt(self, data):
+        print("decrypting...")
+
         data = bytearray(data)
 
         key = bytes(self._args.key,'UTF-8')
@@ -147,10 +152,15 @@ class Decryptor(object):
             xor = key[keypos]
             keypos += 1
 
-            val = data[i]
-            
-            val = self.REVERSE_BITS_TABLE[val]
-            val = val ^ xor
+            if self._args.type == '3':
+                # fsb3: val[i] = table[encrypted_val ^ key[i]] ^ 
+                val = data[i]
+                val = self.REVERSE_BITS_TABLE[val ^ xor]
+            else:
+                # fsb4/5: val[i] = table[encrypted_val] ^ key[i]
+                val = data[i]
+                val = self.REVERSE_BITS_TABLE[val]
+                val = val ^ xor
         
             data[i] = val
 
@@ -158,66 +168,135 @@ class Decryptor(object):
             f.write(data)
 
     def reverse(self, data):
-
-        # guess FSB
-        if self._args.type != '5':
-            print("can't reverse FSB4 (use guessfsb.exe)")
-            return
-
+        print("reversing...")
         self._data = data
         keysize = len(self._data)
 
         # detect key based on FSB 
         k = bytearray(keysize)
-        # header
-        k[0x00] = self._find(0x00, ord('F'))
-        k[0x01] = self._find(0x01, ord('S'))
-        k[0x02] = self._find(0x02, ord('B'))
-        k[0x03] = self._find(0x03, ord('5'))
 
-        # version (almost always 1)
-        k[0x04] = self._find(0x04, 0x01)
-        k[0x05] = self._find(0x05, 0x00)
-        k[0x06] = self._find(0x06, 0x00)
-        k[0x07] = self._find(0x07, 0x00)
+        key_start = 0x00
+        if self._args.type == '5':
+            # header
+            k[0x00] = self._find(0x00, ord('F'))
+            k[0x01] = self._find(0x01, ord('S'))
+            k[0x02] = self._find(0x02, ord('B'))
+            k[0x03] = self._find(0x03, ord('5'))
 
-        # total subsongs
-        k[0x08] = self._find(0x08, 0x00)
-        k[0x09] = self._find(0x09, 0x00)
-        k[0x0a] = self._find(0x0a, 0x00)
-        k[0x0b] = self._find(0x0b, 0x00)
+            # version (almost always 1)
+            k[0x04] = self._find(0x04, 0x01)
+            k[0x05] = self._find(0x05, 0x00)
+            k[0x06] = self._find(0x06, 0x00)
+            k[0x07] = self._find(0x07, 0x00)
 
-        # sample header size
-        k[0x0c] = self._find(0x0c, 0x00)
-        k[0x0d] = self._find(0x0d, 0x00)
-        k[0x0e] = self._find(0x0e, 0x00)
-        k[0x0f] = self._find(0x0f, 0x00)
+            # total subsongs
+            k[0x08] = self._find(0x08, 0x00)
+            k[0x09] = self._find(0x09, 0x00)
+            k[0x0a] = self._find(0x0a, 0x00)
+            k[0x0b] = self._find(0x0b, 0x00)
 
-        # name table size
-        k[0x10] = self._find(0x10, 0x00)
-        k[0x11] = self._find(0x11, 0x00)
-        k[0x12] = self._find(0x12, 0x00)
-        k[0x13] = self._find(0x13, 0x00)
+            # sample header size
+            k[0x0c] = self._find(0x0c, 0x00)
+            k[0x0d] = self._find(0x0d, 0x00)
+            k[0x0e] = self._find(0x0e, 0x00)
+            k[0x0f] = self._find(0x0f, 0x00)
 
-        # sample data size
-        k[0x14] = self._find(0x14, 0x00)
-        k[0x15] = self._find(0x15, 0x00)
-        k[0x16] = self._find(0x16, 0x00)
-        k[0x17] = self._find(0x17, 0x00)
+            # name table size
+            k[0x10] = self._find(0x10, 0x00)
+            k[0x11] = self._find(0x11, 0x00)
+            k[0x12] = self._find(0x12, 0x00)
+            k[0x13] = self._find(0x13, 0x00)
 
-        # codec
-        k[0x18] = self._find(0x18, 0x0F) #vorbis = most common
-        k[0x19] = self._find(0x19, 0x00)
-        k[0x1a] = self._find(0x1a, 0x00)
-        k[0x1b] = self._find(0x1b, 0x00)
+            # sample data size
+            k[0x14] = self._find(0x14, 0x00)
+            k[0x15] = self._find(0x15, 0x00)
+            k[0x16] = self._find(0x16, 0x00)
+            k[0x17] = self._find(0x17, 0x00)
 
-        # usually zero?
-        k[0x1c] = self._find(0x1c, 0x00)
-        k[0x1d] = self._find(0x1d, 0x00)
-        k[0x1e] = self._find(0x1e, 0x00)
-        k[0x1f] = self._find(0x1f, 0x00)
+            # codec
+            k[0x18] = self._find(0x18, 0x0F) #vorbis = most common
+            k[0x19] = self._find(0x19, 0x00)
+            k[0x1a] = self._find(0x1a, 0x00)
+            k[0x1b] = self._find(0x1b, 0x00)
 
-        for i in range(0x20, keysize):
+            # usually zero?
+            k[0x1c] = self._find(0x1c, 0x00)
+            k[0x1d] = self._find(0x1d, 0x00)
+            k[0x1e] = self._find(0x1e, 0x00)
+            k[0x1f] = self._find(0x1f, 0x00)
+            
+            key_start = 0x20
+
+        if self._args.type == '4':
+            # header
+            k[0x00] = self._find(0x00, ord('F'))
+            k[0x01] = self._find(0x01, ord('S'))
+            k[0x02] = self._find(0x02, ord('B'))
+            k[0x03] = self._find(0x03, ord('4'))
+
+            # total subsongs (sometimes 1)
+            k[0x04] = self._find(0x04, 0x01)
+            k[0x05] = self._find(0x05, 0x00)
+            k[0x06] = self._find(0x06, 0x00)
+            k[0x07] = self._find(0x07, 0x00)
+
+            # sample header size
+            k[0x08] = self._find(0x08, 0x00)
+            k[0x09] = self._find(0x09, 0x00)
+            k[0x0a] = self._find(0x0a, 0x00)
+            k[0x0b] = self._find(0x0b, 0x00)
+
+            # sample data size
+            k[0x0c] = self._find(0x0c, 0x00)
+            k[0x0d] = self._find(0x0d, 0x00)
+            k[0x0e] = self._find(0x0e, 0x00)
+            k[0x0f] = self._find(0x0f, 0x00)
+
+            # version
+            k[0x10] = self._find(0x10, 0x00)
+            k[0x11] = self._find(0x11, 0x00)
+            k[0x12] = self._find(0x12, 0x04)
+            k[0x13] = self._find(0x13, 0x00)
+
+            # flags, hash, etc
+            key_start = 0x14
+
+        if self._args.type == '3':
+            # header
+            k[0x00] = self._find(0x00, ord('F'))
+            k[0x01] = self._find(0x01, ord('S'))
+            k[0x02] = self._find(0x02, ord('B'))
+            k[0x03] = self._find(0x03, ord('3'))
+
+            # total subsongs (sometimes 1)
+            k[0x04] = self._find(0x04, 0x01)
+            k[0x05] = self._find(0x05, 0x00)
+            k[0x06] = self._find(0x06, 0x00)
+            k[0x07] = self._find(0x07, 0x00)
+
+            # sample header size
+            k[0x08] = self._find(0x08, 0x00)
+            k[0x09] = self._find(0x09, 0x00)
+            k[0x0a] = self._find(0x0a, 0x00)
+            k[0x0b] = self._find(0x0b, 0x00)
+
+            # sample data size
+            k[0x0c] = self._find(0x0c, 0x00)
+            k[0x0d] = self._find(0x0d, 0x00)
+            k[0x0e] = self._find(0x0e, 0x00)
+            k[0x0f] = self._find(0x0f, 0x00)
+
+            # version (3.1 or 3.0)
+            k[0x10] = self._find(0x10, 0x01)
+            k[0x11] = self._find(0x11, 0x00)
+            k[0x12] = self._find(0x12, 0x03)
+            k[0x13] = self._find(0x13, 0x00)
+
+            # flags, hash, etc
+            key_start = 0x14
+
+
+        for i in range(key_start, keysize):
             k[i] = self._find(i, 0x00)
             if not k[i]: #?
                 k[i] = 0
@@ -227,12 +306,23 @@ class Decryptor(object):
 
 
     def _find(self, pos, expected):
-        val = self._data[pos]
-        val = self.REVERSE_BITS_TABLE[val]
-        for i in range(0x100):
-            if val ^ i == expected:
-                return i
-        return None
+        if self._args.type == '3':
+            # fsb3: val[i] = table[encrypted_val ^ key[i]] ^ 
+            val = self._data[pos]
+            for i in range(0x100):
+                rev = self.REVERSE_BITS_TABLE[val ^ i]
+                if rev == expected:
+                    return i
+            return None
+            
+        else:
+            # fsb4/5: val[i] = table[encrypted_val] ^ key[i]
+            val = self._data[pos]
+            rev = self.REVERSE_BITS_TABLE[val]
+            for i in range(0x100):
+                if rev ^ i == expected:
+                    return i
+            return None
 
 if __name__ == "__main__":
     Cli().start()
