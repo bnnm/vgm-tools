@@ -1,0 +1,354 @@
+# Monster Games STR0 archives (res, trk, sng, etc; sometimes with .toc)
+# some info from: https://aluigi.altervista.org/bms/excitebots.bms
+
+get FILE_SIZE asize
+
+endian little #even on gc
+idstring "0TSR"
+get VALUE1 long
+get VALUE2 long
+
+if   VALUE1 == 0x00 # NASCAR Heat 2002 (PS2)
+    math VERSION = VALUE1
+    math HEADER_SIZE = 0x14
+    # value 2 is dfiles
+elif VALUE1 == 0x02 # Nascar: Dirt to Daytona (PS2), NASCAR Heat 2002 (Xbox)
+    math VERSION = VALUE1
+    math HEADER_SIZE = VALUE2
+elif VALUE1 == 0x04 # Nascar: Dirt to Daytona (GC)
+    math VERSION = VALUE1
+    math HEADER_SIZE = VALUE2
+elif VALUE2 == 0x06 # Test Drive - Eve of Destruction (PS2)
+    math HEADER_SIZE = VALUE1
+    math VERSION = VALUE2
+elif VALUE2 == 0x07 # Test Drive - Eve of Destruction (Xbox)
+    math HEADER_SIZE = VALUE1
+    math VERSION = VALUE2
+elif VALUE2 == 0x08 # Excite Truck (Wii)
+    math HEADER_SIZE = VALUE1
+    math VERSION = VALUE2
+elif VALUE2 == 0x0E # ExciteBots (Wii)
+    math HEADER_SIZE = VALUE1
+    math VERSION = VALUE2
+#elif VALUE2 == 0x0F # Excitebike: World Rally (Wii) //unknown .toc location
+#    math HEADER_SIZE = VALUE1
+#    math VERSION = VALUE2
+else 
+    print "unknown archive version"
+    cleanexit
+endif
+
+###
+
+math HAS_TOC = 0
+math DATA_ZSIZE = 0
+math NAMES_OFFSET = 0
+
+# no offset, instead padded sizes (not including header)
+# inside padding right before next file there is a "!IGM" idstring
+math RELATIVE_OFFSET = 0
+
+if VERSION == 0x00 #size 0x14
+    get FILES long
+    get FILE_SIZE long
+endif
+
+if VERSION == 0x02 #size 0x18
+    get FILE_SIZE long
+
+    get DATE long #time_t 32b
+    get FILES long
+endif
+
+if VERSION == 0x04 #size 0x1c
+    get FILE_SIZE long
+
+    get DATE long #time_t 32b
+    get FILES long
+    get CRC long
+endif
+
+if VERSION == 0x06 #size 0x28
+    get FILE_SIZE long
+
+    get DATE long #time_t 32b
+    get DATA_START long
+    get FILES long
+    get DATA_SIZE long
+
+    get DUMMY long
+    get CRC long
+endif
+
+if VERSION == 0x07 #size 0x2c
+    get FILE_SIZE long
+
+    get DATE long #time_t 32b
+    get DATA_START long
+    get FILES long
+    get DATA_SIZE long
+
+    get DUMMY long
+    get CRC1 long
+    get CRC2 long
+endif
+
+if VERSION == 0x08 #size 0x34
+    get TOC_FLAGS long #1=external toc, 2=compressed data
+
+    get FILE_SIZE long
+    get DATE long #time_t 32b
+    get DATA_START long
+    get DUMMY long #0
+
+    get FILES long
+    get DATA_SIZE long
+    get DUMMY long
+    get DUMMY long
+    
+    get CRC long
+
+    math HAS_TOC = 1
+endif
+
+if VERSION == 0x0E #size 0x40
+    get TOC_FLAGS long #1=external toc, 2=compressed data
+
+    get FILE_SIZE long
+    get DATE long #time_t 32b
+    get DATA_START long
+    get DUMMY long #0
+
+    get FILES long
+    get DATA_SIZE long
+    get DATA_ZSIZE long
+    get DUMMY long
+    
+    get DUMMY long
+    get UNKNOWN long #toc start?
+    get DUMMY long
+    get CRC long
+
+    math HAS_TOC = 1
+endif
+
+#############################################
+
+if HAS_TOC == 1
+    if DATA_ZSIZE != 0 && DATA_SIZE != DATA_ZSIZE
+        #clog MEMORY_FILE DATA_START DATA_ZSIZE DATA_SIZE
+
+        print "compressed file"
+        cleanexit
+    else
+        log MEMORY_FILE DATA_START DATA_SIZE
+
+        xmath REST_OFFSET "DATA_START + DATA_SIZE"
+        xmath REST_SIZE "FILE_SIZE - REST_OFFSET"
+        append
+        log MEMORY_FILE REST_OFFSET REST_SIZE
+        append
+    endif
+
+    open FDDE "toc"
+endif
+
+if VERSION == 0x00
+    math PADDING = 0x10
+    xmath RELATIVE_OFFSET "(FILES * 0x38)"
+    math RELATIVE_OFFSET x= PADDING
+
+    # entry size 0x38
+    for I = 0 < FILES
+        getdstring NAME 0x24
+        get TYPE long
+        get SUBTYPE long
+        get SIZE long
+
+        get DUMMY long
+        get DUMMY long
+
+        callfunction DUMP_FILE 1
+    next I
+endif
+
+if VERSION == 0x02
+    math PADDING = 0x80
+    xmath RELATIVE_OFFSET "(FILES * 0x38)"
+    math RELATIVE_OFFSET x= PADDING
+
+    # entry size 0x38
+    for I = 0 < FILES
+        getdstring NAME 0x24
+        get TYPE long
+        get SUBTYPE long
+        get SIZE long
+
+        get DUMMY long
+        get DUMMY long
+
+        callfunction DUMP_FILE 1
+    next I
+endif
+
+if VERSION == 0x04
+    math PADDING = 0x80
+    xmath RELATIVE_OFFSET "(FILES * 0x40)"
+    math RELATIVE_OFFSET x= PADDING
+
+    # entry size 0x40
+    for I = 0 < FILES
+        getdstring NAME 0x24
+        get TYPE long
+        get SUBTYPE long #3=SFX0, 1=Song
+        get SIZE long
+
+        get CRC1 long
+        get CRC2 long
+        get DUMMY long
+        get DUMMY long
+
+        callfunction DUMP_FILE 1
+    next I
+endif
+
+if VERSION == 0x06 || VERSION == 0x07
+    goto DATA_START
+
+    # entry size 0x44
+    for I = 0 < FILES
+        getdstring NAME 0x20
+
+        get TYPE long
+        get SUBTYPE long #3=SFX0, 1=Song
+        get SIZE long
+        get OFFSET long
+
+        get CRC long
+        get DUMMY long
+        get DUMMY long
+        get DUMMY long
+        get DUMMY long
+
+        math OFFSET += DATA_START
+        callfunction DUMP_FILE 1
+    next I
+endif
+
+if VERSION == 0x08
+    idstring "0SERCOTE"
+    get DUMMY long #0
+    get DUMMY long #0
+
+    idstring "!IGM"
+    get DUMMY long #0
+    get TOC_SIZE long
+    get DATE long #x00
+
+    get FILES long
+    get DATA_SIZE long
+
+    # entry size 0x44
+    for I = 0 < FILES
+        getdstring NAME 0x20
+
+        get TYPE long
+        get SUBTYPE long #3=SFX0, 1=Song
+        get SIZE long
+        get OFFSET long
+
+        get CRC long
+        get DUMMY long
+        get DUMMY long
+        get DUMMY long
+
+        get DUMMY long
+
+        callfunction DUMP_FILE 1
+    next I
+endif
+
+if VERSION == 0x0E #entry size 0x40
+    idstring "0SERCOTE"
+    get DUMMY long #3
+    get DUMMY long #0
+
+    idstring "!IGM"
+    get DUMMY long #3
+    get TOC_SIZE long
+    get DATE long #x00
+
+    get FILES long
+    get DATA_SIZE long
+    get DATA_ZSIZE long
+    get DUMMY long #
+
+    get STRINGS_SIZE long
+    savepos CURRENT
+    xmath NAMES_OFFSET "CURRENT + (FILES * 0x28)"
+    
+    # entry size 0x28
+    for I = 0 < FILES
+        get NAME_OFFSET long
+        get TYPE long
+        get SUBTYPE long #3=SFX0, 1=Song 
+        get SIZE long
+
+        get OFFSET long
+        get CRC long
+        get DUMMY long
+        get DUMMY long
+
+        get DUMMY long
+        get DUMMY long
+        
+        callfunction DUMP_FILE 1
+    next I
+endif
+
+###
+
+startfunction DUMP_FILE
+    if RELATIVE_OFFSET != 0
+        xmath OFFSET "HEADER_SIZE + RELATIVE_OFFSET"
+    endif
+
+    if NAMES_OFFSET != 0
+        savepos CURRENT
+        math NAME_OFFSET += NAMES_OFFSET
+        goto NAME_OFFSET
+        get NAME string
+        goto CURRENT
+    endif
+
+    reverselong TYPE
+    string TYPE = TYPE
+    string FINAL_NAME p "%s/%s" TYPE NAME
+
+    if HAS_TOC == 1
+        log FINAL_NAME OFFSET SIZE MEMORY_FILE
+    else
+        log FINAL_NAME OFFSET SIZE
+    endif
+    #print "%FINAL_NAME% %OFFSET|h% %SIZE|h%"
+
+
+    # no offset, advance size + padding
+    if RELATIVE_OFFSET != 0 && PADDING != 0
+        math RELATIVE_OFFSET += SIZE
+        math RELATIVE_OFFSET x= PADDING
+
+        # sometimes there is extra padding but not very consistent, not sure how to detect better
+        xmath TEST_OFFSET "HEADER_SIZE + RELATIVE_OFFSET - 0x04"
+        if TEST_OFFSET < FILE_SIZE
+            savepos CURRENT
+            goto TEST_OFFSET
+            get TEST_VALUE long
+            if TEST_VALUE != 0x4D474921 #!IGM
+                math RELATIVE_OFFSET += PADDING
+            endif
+            goto CURRENT
+        endif
+    endif
+
+endfunction

@@ -21,13 +21,19 @@ Sometimes key in *CriWareInitializer* is not set or set but not used (or there a
 ## UNITY WITH GLOBAL METADATA
 Sometimes key is inside `global-metadata.dat` (a companion file in `/Data/Managed/Metadata/`). Get Il2CppDumper (https://github.com/Perfare/Il2CppDumper), find game's Unity main (typically `GameAssembly.dll` or `libil2cpp.so`, not a base .exe) plus `global-metadata.dat`. Then launch `Il2CppDumper.exe`, select main exe and metadata. This should make a bunch of files.
 
-Now open `stringliteral.json`, which may contain the actual key somewhere. If you have *notepad++*, open find dialog, select search mode "regular expression", find `"[1-9][0-9]+"` or `[1-9][0-9]{6,19}` (this finds strings that look like hca keys). Another option is using *notepad++*'s *edit > line edit operations > sort lines* as it groups numbers together and look in the `"value": ...` strings, or if you have grep.exe (included with GIT, set in path) `grep.exe -Eo '[1-9][0-9]{4,19}' stringliteral.json > keys.txt`..
+Now open `stringliteral.json` with a text editor, and it may contain the actual key somewhere. We want to look for text text that could be an HCA key. For example `"value": "123456789"` 123456789 could be the key.
 
-Look for numbers that looks big enough (tiny numbers like "32" are unlikely to be keys) and test them.
+If you have *notepad++*, open the *find dialog* (CTRL + F), change the *Search Mode* radio button to *Regular expression*". Then put `"[1-9][0-9]+"` or `[1-9][0-9]{6,19}` in the *Find what" box, then press **Find Next**. That will find next key-looking string (keep pressing the button as there will be multiple cases).
+
+Another option is using *notepad++*'s *edit > line edit operations > Sort Lines Lexicographically Ascending*, which groups numbers together. Look for `"value": "..."` strings. If you have grep.exe (included with GIT, set in path) you can also use `grep.exe -Eo '[1-9][0-9]{4,19}' stringliteral.json > keys.txt`..
+
+With the above methods find numbers that look big enough (tiny numbers like "32" are unlikely to be keys) and test them as detailed below. It's a bit cumbersome but there shoulnd't be that many.
+
+You can also copy all keys (withouth " quotes) to `keys.txt` and test many keys at once with the hca-bruteforcer.
 
 Sometimes main is encrypted/obfuscated and needs to be decrypted first before it can be used with Il2CppDumper (TODO). 
 
-If that also fails sometimes file is inside another script or text file, so you could .zip all with no compression + use strings2.exe + grep (see above). But key may be as part of game code which requires more complex methods.
+If that also fails sometimes key is inside another script or text file. You could .zip all unity files with no compression + use strings2.exe + grep (see above). But key may be as part of game code which requires more complex methods so this rarely works.
 
 
 ## EXTRACTING FROM BINARIES / MEMORY DUMPS

@@ -35,3 +35,7 @@ for %X in (*.fsb.xen) do guessfsb.exe %X --write-key-file
 Otherwise try *guessfsb04beta* which may be slightly better.
 
 If the tool hangs or doesn't find anything try: `fsb5-keyhelper.py (file) -t 4` for FSB4 and see FSB5 info above (encryption is the same, just the header is different). For FSB3 `-t 3` also works, but FSB3 are simpler and you can see patterns as-is with a hex editor.
+
+
+## Unity
+Not very important since key is easy to crack, but FSB keys in Unity seem to be stored in some resource file like "resources.assets", in plaintext (looking like hex though), near "FMODStudioSettings" strings.
