@@ -16,13 +16,18 @@ Once you have the key it can be included in vgmstream (post it somewhere devs ca
 
 
 ## FSB5
-There is a guide on top of *fsb5-keyhelper.py*,  but basically:
+There is a guide on top of [fsb5-keyhelper.py](https://github.com/bnnm/vgm-tools/blob/master/misc/fsb5-keyhelper/fsb5-keyhelper.py).
+
+But basically:
 ```
 fsb5-keyhelper.py (file)
 ```
 
-Open generated `(file).bin` with a hex editor and try to find (parts of) key in plain text somewhere inside.
+Then open generated `(file).bin` with a hex editor and try to find (parts of) key in plain text somewhere inside.
 
+If the file and it's taking too long you may try using `-s 0x50000`.
+
+This works well for smaller keys. For bigger you may .
 
 ## FSB3/4
 `guessfsb.exe (file)` and wait a while.
@@ -38,4 +43,4 @@ If the tool hangs or doesn't find anything try: `fsb5-keyhelper.py (file) -t 4` 
 
 
 ## Unity
-Not very important since key is easy to crack, but FSB keys in Unity seem to be stored in some resource file like "resources.assets", in plaintext (looking like hex though), near "FMODStudioSettings" strings.
+Not very important since key is easy to crack, but FSB keys in Unity seem to be stored in resource files like `resources.assets`, in plaintext (looking like hex though), near *FMODStudioSettings* strings.

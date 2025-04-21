@@ -1,6 +1,8 @@
 # FSB5-KEYHELPER
 #
-# helps finding FSB5 keys, with some human intervention. Miniguide:
+# Helps finding FSB5 keys, with some human intervention.
+#
+# Miniguide:
 # - call: fsb5-keyhelper.py (file)
 #   - should work with .fsb and .bank
 #   - tool is kinda slow, use -o and -s flags with giant files
@@ -12,6 +14,7 @@
 #   - most files have parts with many 0s, which means keys should be seen multiple times in the file
 #     (look for those first 8 bytes and see repeated patters)
 #   - keys are often in the exe or helper files too, so look for the first 8 chars in those files too
+#     - is key seems longer than 32 chars this is often faster
 # - when you have a potential correct key make .fsbkey and paste the text key inside (without line feed)
 # - try to play it in vgsmtream; if it doesn't play tweak the key until it does
 # - if still wrong use fsb5-keyhelper.py (file) -k (key), which should create (file).dec.fsb
@@ -94,6 +97,7 @@ class Decryptor(object):
 
     def __init__(self, args):
         self._args = args
+        self._temp = {}
 
     def _find_fsb(self, data):
         # abridged, see fsb_fev.c
@@ -117,7 +121,7 @@ class Decryptor(object):
             else:
                 data = f.read()
 
-        if not self._args.offset and not self._args.size and data[0:4] == b'RIFF':
+        if not self._args.offset and data[0:4] == b'RIFF':
             info = self._find_fsb(data)
             if not info:
                 return None
@@ -306,21 +310,35 @@ class Decryptor(object):
 
 
     def _find(self, pos, expected):
+        #TODO: surely there is a simple way
+        
         if self._args.type == '3':
             # fsb3: val[i] = table[encrypted_val ^ key[i]] ^ 
             val = self._data[pos]
+
+            out = self._temp.get( (val, expected), None )
+            if out is not None:
+                return out
+
             for i in range(0x100):
                 rev = self.REVERSE_BITS_TABLE[val ^ i]
                 if rev == expected:
+                    self._temp[ (val, expected) ] = i
                     return i
             return None
             
         else:
             # fsb4/5: val[i] = table[encrypted_val] ^ key[i]
             val = self._data[pos]
+
+            out = self._temp.get( (val, expected), None )
+            if out is not None:
+                return out
+
             rev = self.REVERSE_BITS_TABLE[val]
             for i in range(0x100):
                 if rev ^ i == expected:
+                    self._temp[ (val, expected) ] = i
                     return i
             return None
 

@@ -1,9 +1,11 @@
 # HCA KEYS
-CRIWARE (`.acb`/`.awb`/`.hca`) often uses encrypted HCA = not playable with vgmstream. HCA key are numbers from "1" to "18446744073709551615" (8 bytes in hex: 0xNNNNNNNN NNNNNNNN). Some tips about finding keys.
+CRIWARE (`.acb`/`.awb`/`.hca`) often uses encrypted HCA audio. When this happen file is 'playable' with *vgmstream* but it sounds garbled.
 
-**Important**: don't extract .hca from .awb/acb to test files. Some .awb/acb have a subkey and extracting .hca won't work, just accept .awb as-is in your life. This mostly assumes .awb have .hca inside. For .awb with .adx see ADXKEY.md
+HCA key are numbers from "1" to "18446744073709551615" (8 bytes in hex: 0xNNNNNNNN NNNNNNNN). It's possible to figure out the HCA *encryption key* and pass the key to vgmstream to make it playable.
 
-**Note about USM keys** USM videos can be encrypted too. Key is sometimes shared with hca, sometimes isn't. But due to how USM encryption works it's fairly easy (if a bit time consuming) to reverse the key with just the video, as long as they have some blank data (TODO).
+**NOTE** this guide is for HCA keys only. If *vgmstream* doesn't not recognize the file to begin with, it may be encrypted in some other way not covered here.
+
+**Important**: don't extract `.hca` from `.awb/acb` to test files. Some `.awb/acb` have a subkey and extracting .hca won't work, just accept `.awb` as-is in your life. This guide assumes `.awb/acb` have `.hca` inside. For `.adx` inside see [ADXKEY.md]
 
 
 ## UNITY WITH CRIWARE INIT
@@ -23,7 +25,7 @@ Sometimes key is inside `global-metadata.dat` (a companion file in `/Data/Manage
 
 Now open `stringliteral.json` with a text editor, and it may contain the actual key somewhere. We want to look for text text that could be an HCA key. For example `"value": "123456789"` 123456789 could be the key.
 
-If you have *notepad++*, open the *find dialog* (CTRL + F), change the *Search Mode* radio button to *Regular expression*". Then put `"[1-9][0-9]+"` or `[1-9][0-9]{6,19}` in the *Find what" box, then press **Find Next**. That will find next key-looking string (keep pressing the button as there will be multiple cases).
+If you have *notepad++*, open the *find dialog* (CTRL + F), change the *Search Mode* radio button to *Regular expression*". Then put `"[1-9][0-9]+"` or `"[1-9][0-9]{6,19}"` in the *Find what" box, then press **Find Next**. That will find next key-looking string (keep pressing the button as there will be multiple cases).
 
 Another option is using *notepad++*'s *edit > line edit operations > Sort Lines Lexicographically Ascending*, which groups numbers together. Look for `"value": "..."` strings. If you have grep.exe (included with GIT, set in path) you can also use `grep.exe -Eo '[1-9][0-9]{4,19}' stringliteral.json > keys.txt`..
 

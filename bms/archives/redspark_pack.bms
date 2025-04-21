@@ -1,0 +1,31 @@
+# MadWorld .rsp extractor
+
+endian big
+
+idstring "PACK"
+get FILES long
+
+get BASE_NAME basename
+math PACK_EXISTS = 0
+
+for I = 0 < FILES
+    get OFFSET long
+    get SIZE long
+
+    savepos CURRENT
+    goto OFFSET
+    get ID long
+    if ID == 0x5041434B
+       string EXT = "rsp"
+       math PACK_EXISTS = 1
+    elif PACK_EXISTS == 1
+       string EXT = "bin" #doesn't look like audio
+    else 
+       string EXT = "rsd"
+    endif
+    goto CURRENT
+
+    string NAME p= "%s_%02i.%s" BASE_NAME I EXT
+
+    log NAME OFFSET SIZE
+next I

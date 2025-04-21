@@ -1,0 +1,92 @@
+# Harmonix's Karaoke Revolution (PS2) .ARK / .HDR + ARK
+
+get VERSION long
+if VERSION == 2 #.ARK with header + data (KR)
+    get FILES long
+    savepos INFO_OFFSET
+
+    xmath NAMES_OFFSET "0x08 + (FILES * 0x14)"
+    goto NAMES_OFFSET
+    get NAMES_SIZE long
+    math NAMES_OFFSET += 0x04
+
+    xmath ENTRIES_OFFSET "NAMES_OFFSET + NAMES_SIZE"
+    goto ENTRIES_OFFSET
+    get ENTRIES_SIZE long
+    math ENTRIES_OFFSET += 0x04
+
+elif VERSION == 3 #.HDR + ARK (KR Party)
+    get UNK long
+    get UNK long
+    get FILE_SIZE long
+    
+    xmath NAMES_OFFSET "0x10"
+    goto NAMES_OFFSET
+    get NAMES_SIZE long
+    math NAMES_OFFSET += 0x04
+
+    xmath ENTRIES_OFFSET "NAMES_OFFSET + NAMES_SIZE"
+    goto ENTRIES_OFFSET
+    get ENTRIES_SIZE long
+    math ENTRIES_SIZE *= 0x04
+    math ENTRIES_OFFSET += 0x04
+
+    xmath INFO_OFFSET "ENTRIES_OFFSET + ENTRIES_SIZE"
+    goto INFO_OFFSET
+    get FILES long
+    math INFO_OFFSET += 0x04
+    
+    #open FDSE "MAIN.HDR"
+    open FDSE "MAIN_0.ARK" 1
+
+else
+    print "unknown header version"
+    exit
+
+endif
+
+
+goto INFO_OFFSET
+
+for I = 0 < FILES
+    get OFFSET long
+    get FILE_POS long
+    get FOLDER_POS long
+    get SIZE long
+    get DEC_SIZE long
+
+    callfunction GET_NAME 1
+
+    #string NAME p= "ARK_%04i." I
+    
+    if VERSION == 3
+        log NAME OFFSET SIZE 1
+    else
+        log NAME OFFSET SIZE
+    endif
+
+    #print "%NAME%"
+next I
+
+startfunction GET_NAME
+    savepos CURRENT
+
+    xmath FILE_ENTRY "ENTRIES_OFFSET + (FILE_POS * 0x04)"
+    xmath FOLDER_ENTRY "ENTRIES_OFFSET + (FOLDER_POS * 0x04)"
+    
+    goto FILE_ENTRY
+    get FILE_OFFSET long
+    math FILE_OFFSET += NAMES_OFFSET
+    goto FILE_OFFSET
+    get FILE_NAME string
+
+    goto FOLDER_ENTRY
+    get FOLDER_OFFSET long
+    math FOLDER_OFFSET += NAMES_OFFSET
+    goto FOLDER_OFFSET
+    get FOLDER_NAME string
+
+    string NAME p= "%s/%s" FOLDER_NAME FILE_NAME
+    
+    goto CURRENT
+endfunction
