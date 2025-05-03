@@ -7,6 +7,8 @@
 #   (python3, subdirs)
 # v20220920 by bnnm 
 #   (accept multiple files for easier drag and drop, minor cleanup)
+# v20250503 by bnnm 
+#   (fix RIFF)
 
 import sys
 import os
@@ -57,13 +59,13 @@ def parse_file(filepath):
 
         g1l.seek(fileOffset)
         header = g1l.read(4)
-        if header == "RIFF":
+        if header == b"RIFF":
             fileSize = readu32(g1l) + 8
             g1l.seek(0x24,1)
             guid = g1l.read(0x10)
-            if guid == "\xD2\x42\xE1\x47\xBA\x36\x8D\x4D\x88\xFC\x61\x65\x4F\x8C\x83\x6C":
+            if guid == b"\xD2\x42\xE1\x47\xBA\x36\x8D\x4D\x88\xFC\x61\x65\x4F\x8C\x83\x6C":
                 ext = ".at9"
-            elif guid == "\xBF\xAA\x23\xE9\x58\xCB\x71\x44\xA1\x19\xFF\xFA\x01\xE4\xCE\x62":
+            elif guid == b"\xBF\xAA\x23\xE9\x58\xCB\x71\x44\xA1\x19\xFF\xFA\x01\xE4\xCE\x62":
                 ext = ".at3"
             else:
                 print("Unknown RIFF header with GUID %s" % guid)
