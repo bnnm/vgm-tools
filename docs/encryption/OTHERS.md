@@ -7,12 +7,13 @@ Open the file with *HxD* and use *Analisys > statistics*, shows which bytes are 
 Conversely if you see lots of 0s used it's probably *not encrypted*. If only certain value is used a lot (like 0x30) it's probably XOR'ed using 0x30, and so on.
 
 
-
-
 ## Reversing AES
 Typically you need to use IDA or Ghidra to reverse engineer the executable (not for the faint of heart) and figure out the key(s).
 
 Depending on the game, this can be fairly easy (functions are very separate) or nigh imposible (very obfuscated).
+
+For some examples about reversing see: https://github.com/bnnm/vgm-tools/tree/master/docs/re/unity.md
+
 
 ### AES keys
 AES have 2 possible key sizes
@@ -37,12 +38,11 @@ There are multiple AES modes which makes figuring:
 - AES-CTR with passwordDeriveBytes: 1 key per file, derived from base key + some per-file value
   - all files start with the different bytes and are not padded to 0x10
   - seen in some .NET/Unity games, not that common
-  - see https://github.com/bnnm/vgm-tools/tree/master/misc/shiren6dec
 
 Basically first determine if file has padding to 0x10 (ECB/CBC or CTR) and if data starts the same bytes or not (ECB or CBC).
 
 ## Testing keys
-Easiest would be with some .py. For example:
+Easiest would be with some `.py`. For example:
 
 ```
 import hashlib, glob, os
@@ -86,4 +86,3 @@ A trick is running the PC version, or the emulated game and making a memdump (or
 You can often find partial decrypted assets, or the whole thing if you are lucky. 
 
 Sometimes you even make a memdump per song + extract it from the memdump with a hex editor. Not elegant but who cares.
-

@@ -27,6 +27,7 @@ fourcc_type = {
     b'RIFF': 'riff', #wav or otherwise
     b'RIFX': 'rifx', #wav or otherwise
     b'XWAV': 'xwv',
+    b'caff': 'caf',
     b'\x89PNG': 'png',
     b'ID3\x03': 'mp3',
     b'ID3\x04': 'mp3',

@@ -41,6 +41,19 @@ startfunction EXTRACT_FILE
             endif
         endif
 
+        if RIP_OK == 0
+            math OFFSET -= 0x14
+            goto OFFSET
+            get TEST long
+            get SIZE long
+            get SIZE2 long
+            math OFFSET += 0x14
+
+            if TEST < 0x100 && SIZE == SIZE2
+                math RIP_OK = 1
+            endif
+        endif
+
         if RIP_OK == 1
             log NAME OFFSET SIZE
         endif

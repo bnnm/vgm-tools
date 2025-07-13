@@ -1,0 +1,36 @@
+# extracts pa.bin from Premium Agency games [Nanodiver (PSP), Mimana Iyar Chronicle (PSP)]
+
+idstring "PAA\x00"
+get DUMMY long
+get FILES long
+get ENTRIES_START long
+
+get OFFSETS_START long
+get UNK long
+get DUMMY long
+get DUMMY long
+
+open FDDE ARC 1
+
+goto ENTRIES_START 
+
+# 3 tables: name offset + sizes, offsets, names
+for I = 0 < FILES
+    get NAME_OFFSET long
+    get SIZE long
+    get UNK1 long #compression related?
+    get UNK2 long #compression related?
+
+    savepos CURRENT
+
+    xmath OFFSETS_OFFSET "OFFSETS_START + (I * 0x04)"
+    goto OFFSETS_OFFSET
+    get OFFSET long
+
+    goto NAME_OFFSET
+    get NAME string #padded to 0x10, usually 0x20-30
+
+    goto CURRENT
+
+    log NAME OFFSET SIZE 1
+next I
