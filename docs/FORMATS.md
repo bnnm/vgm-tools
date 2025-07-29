@@ -72,6 +72,73 @@ However the extra 1% is that (I think) very early versions of CRIWARE did allow 
 Do note sometimes .acb don't match .awb 1:1 so vgmstream can use them as-is to get stream names. Those cases are handled via .txtm, that tells vgmstream how to load related .acb: https://github.com/vgmstream/vgmstream/blob/master/doc/USAGE.md#txtm
 
 
+### UNREAL ENGINE 3 FILES
+UE3 packs data .xxx files. In turn, some of those have ".SoundNodeWave" for audio. Those are not actual "files" or "sound formats" but rather "class serializations" with data inside (payload).
+
+Parts of the SoundNodeWave info is external (which fields are used, offsets, etc), and every UE3 version uses slightly different serialization. Meaning, you can't parse it like a common a file.
+
+Instead, use [umodel](https://www.gildor.org/downloads) (UE Viewer or unreal package extractor/decompressor) or similar tool to extract the payload inside .SoundNodeWave. This data can be standard `.ogg`, `.msf`, semi-custom EU3-XMA and so on.
+
+umodel transmogrifies EU3-XMA into riff `.xma` but some custom umodel version can extract them as-is.
+
+Typically 1 SoundNodeWave = 1 subfile, but rarely may have multiple sub-files.
+
+Loop points aren't consistent, some games have extra fields in SoundNodeWave with loops, or may use extra "cue" files for that, or something else.
+
+Also some games use custom UE3 versions (particularly ports to newer hardware) which different compression methods, which umodel may not support. It's possible to make a .bms to extract those packages.
+
+
+### UNREAL ENGINE 4/5 FILES
+Similar to UE4, but data is inside .pak. Inside, audio data (and other types of data) often comes in uexp+uasset, or ubulk+uasset and combinations of that.
+
+Audio data is a bit more varied: .ogg, .awb/acb, .wem/bnk, .ueba, .sab/mab, etc.
+
+Umodel and Fmodel can extract the audio payload from those uexp/uasset/etc. If that fails it's also possible to extract then manually (see vgm-tools/bms). Sometimes a small part of the data payload is inside uexp so you may need both files.
+
+Loops work similarly to that (info inside uexp/uasset or in a "cue" file or anything else). FModel can translate to .json most files so you can check some audio-looking uexp/uasset for info.
+
+
+### WEM AND BNK (WWISE)
+The short version is that games using Wwise load .bnk, then this load plays .wem as needed, sometimes dynamically. So playing just .wem is not usually good enough since things like loops are often in the .bnk.
+
+Because of its dynamic nature vgmstream can't quite handle .bnk. Instead you can use [wwiser](https://github.com/bnnm/wwiser), which will read .bnk and generate .txtp that simulate how Wwise behaves.
+
+Wwiser can also give proper names to bnk+wem rips. .wem files are usually named (number).wem which isn't reversable by itself. If you have a SoundsBankInfo.xml file you may find original .wem names inside but they aren't that useful. Since Wwise's dynamic music is handled via "events", that is wwiser tries to emulate and you can reverse names: [here](https://github.com/bnnm/wwiser-utils/blob/master/doc/NAMES.md) and [here](https://github.com/bnnm/wwiser-utils/tree/master/wwnames). 
+
+Overall wwise games are a pain to rip not just because of this, but rather due the huge number of sounds they have, since they are used for complex sound behaviors. So even if you get names you may end up with thousands of .txtp = thousands of sounds. 
+
+Sometimes wem/bnk are inside .pck, see https://github.com/bnnm/wwiser-utils for .bms to extract them.
+
+## UBISOFT MAP/SB (.SM0+SS0, .SB0+SS0, .SM1+SS0, .SB1+SS1, ...)
+This is a database-like format. Open .SM0/SB0 (header) in vgmstream and it should automatically load audio from .SS0 if needed.
+
+Different platforms use other numbers: .SS1, .SS2, .SS3... they work the same.
+
+A problem is that SM0/SB0 may to include thousands of sounds (specially .SM0), including music+sfx+voices. Tools like txtp_maker.py can make filtered .txtp so you can target only the subsongs you want.
+ 
+ 
+## UBISOFT BAO
+BAO (usually .bao) is the evolution of Ubi MAP/SB, but they have many small "header BAOs" that open "stream BAOs".
+
+Extracting BAOs isn't that simple and varies per game. Often they are compressed inside .forge archives (only for games that don't use Wwise). Some info: https://github.com/bnnm/vgm-tools/tree/master/misc/bao
+
+vgmstream supports several versions of BAO, but you need to extract both and open the "header BAOs" which have info about how to play stream BAOs (they can't be supported without header BAOs).
+
+There are no filenames and instead all files are numbers, which must be kept as-is since they files reference each other by number.
+
+Some games also use BAOs in .pk/spk outside .forge archives.
+
+For worse-but-usable results you can also try to use *DecUbiSnd* to play raw stream BAOs.
+
+
+## FSB AND BANK / FEV
+.fsb and .bank are supported by vgmstream, so if one file doesn't play it may be encrypted (or have no audio).
+
+See https://github.com/bnnm/vgm-tools/tree/master/misc/fsb5-keyhelper
+
+Some games use .fev (cue) events to play audio in more complex ways, which could be simulated via TXTP (no tools at the moment).
+
+
 ## MSF + MUS
 Those are EA's dynamic music containers, that define N segments + defines info to transition between segments.
 
