@@ -337,7 +337,7 @@ def fix_wwnames(inname):
     clines = clean_lines(clines)
     outname = inname
     
-    update = UPDATE_ORIGINAL and 'wwnames' in outname
+    update = UPDATE_ORIGINAL and 'rnames' in outname
     if not update:
         outname = outname.replace('.txt', '-clean.txt')
     with open(outname, 'w', encoding='utf-8') as f:
