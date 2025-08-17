@@ -76,7 +76,7 @@ class Words(object):
     FILENAME_SKIPS = 'skips.txt'
     FILENAME_REVERSABLES = 'hashes.txt'
     #PATTERN_LINE = re.compile(r'[\t\n\r .<>,;.:{}\[\]()\'"$&/=!\\/#@+\^`´¨?|~*%]')
-    PATTERN_LINE = re.compile(b'[^A-Za-z0-9_./-]')
+    PATTERN_LINE = re.compile(b'[^A-Za-z0-9_./-@]')
     PATTERN_WORD = re.compile(b'[_]')
     #PATTERN_WRONG = re.compile(b'[^A-Za-z0-9_]')
     #PATTERN_WRONG = re.compile(r'[\t.<>,;.:{}\[\]()\'"$&/=!\\/#@+\^`´¨?|~*%]')
@@ -1185,7 +1185,7 @@ class Words(object):
                     if ':' not in line:
                         continue
 
-                    fnv, name = line.split(':')
+                    fnv, name = line.split(':', 1)
                     fnv = int(fnv.strip(), 16)
                     name = name.strip()
                     if fnv not in names:
