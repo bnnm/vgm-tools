@@ -1,0 +1,416 @@
+# UE4/UE5 simple asset extractor by bnnm
+# Extracts files from .uasset / .uasset + .ubulk / .uexp + .ubulk / .ubulk / etc
+#
+# May only work with some versions, preferably extract with UModel/FModel when possible
+
+######################
+
+math IS_CHUNKED = 0
+math RIP_OK = 0
+
+callfunction SETUP_FILES 1
+callfunction EXTRACT_ASSETS 1
+
+# sometimes ubulk has the whole asset
+if RIP_OK == 0 && EXISTS_UASSET == 1 && EXISTS_UBULK == 1
+    math IS_CHUNKED = 0
+    open FDDE UBULK 0
+    callfunction EXTRACT_ASSETS 1
+endif
+
+
+
+startfunction EXTRACT_ASSETS
+    get FILE_SIZE asize 0
+
+#   # not always correct
+#   if EXISTS_UASSET == 1
+#       ...
+#       #0x3E7CF800
+#   elif EXISTS_UEXP
+#       get FILE_SIZE asize 0
+#
+#       xmath LAST_OFFSET " FILE_SIZE - 0x04 "
+#       goto LAST_OFFSET 
+#       endian big
+#       get EXPECTED_ID long 0
+#       endian little 
+#       #0xC1832A9E
+#   endif
+
+#   # UE footer, not always (UE4 only?)
+#   if EXPECTED_ID != 0xC1832A9E && EXPECTED_ID != 0x3E7CF800
+#       print "expected UE4 id not found"
+#       cleanexit
+#   endif
+
+
+    # extract common assets
+    if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "UE4OPUS" ".ue4opus"  #.opus/.lopus is also ok
+    endif
+    if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "ABEU" ".ueba" #.binka is probably ok
+    endif
+    if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "OggS" ".ogg"
+    endif
+    if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "RIFF" ".wav" #may be .adpcm/wem
+    endif
+    if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "@UTF" ".acb"
+    endif
+    if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "sabf" ".sab"
+    endif
+    if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "mabf" ".mab"
+    endif
+
+endfunction
+
+###
+
+startfunction SETUP_FILES
+    open FDDE UASSET 0 EXISTS_UASSET
+    open FDDE UBULK 1 EXISTS_UBULK
+    open FDDE UEXP 9 EXISTS_UEXP
+
+    if EXISTS_UBULK == 1 && EXISTS_UEXP == 1
+        open FDDE UEXP 0
+        #open FDDE UBULK 1
+        math IS_CHUNKED = 1
+    elif EXISTS_UBULK == 1 && EXISTS_UASSET == 1
+        #open FDDE UASSET 0
+        #open FDDE UBULK 1
+        math IS_CHUNKED = 1
+    elif EXISTS_UASSET == 1 && EXISTS_UEXP == 1 && FILE_SIZE < 0x1000
+        # UE4 sometimes
+        open FDDE UEXP 0
+    elif EXISTS_UASSET == 1
+        #open FDDE UASSET 0
+    elif EXISTS_UEXP == 1
+        open FDDE UEXP 0
+    elif EXISTS_UBULK == 1
+        open FDDE UBULK 0
+    endif
+endfunction
+
+
+startfunction CHECK_EXTENSION
+    # TODO: could use class definition, like "ADPCM", "BINKA" and so on
+    # (position varies with UE version but could use FINDLOC in the first 0x100)
+
+    #goto OFFSET / UEXP_OFFSET
+    if SEARCH_STRING == "RIFF"
+        get RIFF_ID long
+        get RIFF_SIZE long
+        get WAVE_ID long
+        get FMT_ID long
+        get FMT_SIZE long
+
+        if FMT_ID == 0x666D7420 || FMT_ID == 0x20746D66
+            get FORMAT short
+            if   FORMAT == 0x0001
+                string FILE_EXT = ".wav"
+            elif FORMAT == 0x0002
+                string FILE_EXT = ".adpcm"
+            elif FORMAT > 0x0002 && FORMAT > 0xFFFD
+                string FILE_EXT = ".wem"
+            elif FORMAT == 0xFFFE && FMT_SIZE <= 0x18
+                #real 0xFFFE RIFF should have a GUID I think
+                string FILE_EXT = ".wem"
+            endif 
+            # detect Wwise IDs?
+        endif
+    endif
+    
+    if SEARCH_STRING == "@UTF"
+        findloc ACF_OFFSET string "ACF Format" 0 ""
+        if ACF_OFFSET != ""
+            string FILE_EXT = ".acf"
+        endif
+    endif
+
+endfunction
+
+
+startfunction EXTRACT_FILE
+    goto 0x00 0
+    string SEARCH_STRING = EXTRACT_FILE_ARG1
+    string FILE_EXT = EXTRACT_FILE_ARG2
+
+    math AUDIO_PACKET_OFFSET = 0
+    math FIRST_SIZE = 0
+    math TABLE_FORMAT = 0
+
+    if IS_CHUNKED == 0
+        callfunction EXTRACT_FILE_STANDARD 1
+    else 
+        callfunction EXTRACT_FILE_CHUNKED 1
+    endif
+endfunction
+
+
+startfunction EXTRACT_FILE_STANDARD
+
+    findloc UEXP_OFFSET string SEARCH_STRING 0 ""
+    if UEXP_OFFSET != ""
+        callfunction LOAD_FORMAT_STANDARD 1
+    endif
+
+    if RIP_OK == 1
+        # detect extension in some cases
+        goto UEXP_OFFSET
+        callfunction CHECK_EXTENSION 1
+
+        get NAME basename
+        string NAME += FILE_EXT
+        
+        math OFFSET = UEXP_OFFSET
+        math SIZE = FIRST_SIZE
+
+        log NAME UEXP_OFFSET FIRST_SIZE
+    endif
+endfunction
+
+
+startfunction EXTRACT_FILE_CHUNKED
+
+    findloc UEXP_OFFSET string SEARCH_STRING 0 ""
+    if UEXP_OFFSET != ""
+        # loads format and table offsets
+        callfunction LOAD_FORMAT_CHUNKED 1
+
+        # copy chunks
+        if RIP_OK == 1
+            set CHUNK_FILE long 0
+
+            log MEMORY_FILE 0 0
+            append #on
+            do
+                #print "table: o=%TABLE_OFFSET|h% / f=%FILE_SIZE|h%"
+                goto TABLE_OFFSET 0
+
+                if TABLE_FORMAT == 0
+                    # older table near EOF
+                
+                    if CHUNK_FILE == 0
+                        get CHUNK_SIZE long 0
+                        get CHUNK_DATA long 0
+                        math ENTRY_SIZE = 0x08
+
+                        math CHUNK_OFFSET = UEXP_OFFSET
+                    else
+                        get CHUNK_FLAGS long #always 0x01 (flags?)
+                        get CHUNK_TYPE long #always 0x00010501
+                        get CHUNK_SIZE long 0
+                        get CHUNK_DATA long 0
+
+                        get CHUNK_OFFSET longlong 0
+                        get CHUNK_SIZE2 long 0 #repeat?
+                        get CHUNK_DATA2 long 0 #repeat? 
+
+                        math ENTRY_SIZE = 0x20
+                    endif
+
+                elif TABLE_FORMAT == 1
+                    # new table in the middle
+                    get CHUNK_OFFSET longlong 0
+                    get CHUNK_DUMMY long 0 #always -1?
+                    get CHUNK_DUMMY long 0 #always -1?
+                    
+                    get CHUNK_SIZE longlong
+                    get CHUNK_TYPE long
+                    get CHUNK_DUMMY long
+
+                    # 0x40=memory, 0x00010501=stream
+                    if CHUNK_TYPE == 0x40 #rarery there are multiple memory chunks (Fornite)
+                        math CHUNK_FILE = 0
+                        math CHUNK_OFFSET += AUDIO_PACKET_OFFSET
+                    else
+                        math CHUNK_FILE = 1
+                    endif
+                    
+                    math CHUNK_DATA = CHUNK_SIZE
+                    math ENTRY_SIZE = 0x20
+                else
+                    print "unknown chunk table"
+                    exit
+                endif
+
+                # usually CHUNK_SIZE and CHUNK_DATA are the same, but not always
+                #print "chunk: file=%CHUNK_FILE%, o=%CHUNK_OFFSET|h%, s=%CHUNK_SIZE|h%, d=%CHUNK_DATA|h%"
+                log MEMORY_FILE CHUNK_OFFSET CHUNK_DATA CHUNK_FILE
+
+                # implicit offset in some cases
+                if TABLE_FORMAT == 1 && CHUNK_FILE == 1
+                    math CHUNK_OFFSET += CHUNK_SIZE
+                endif
+
+                # first chunk is in .uasset, then in .ubulk/etc
+                if TABLE_FORMAT == 0 && CHUNK_FILE == 0
+                    math CHUNK_FILE = 1
+                    math CHUNK_OFFSET = 0
+                endif
+
+                math TABLE_OFFSET += ENTRY_SIZE
+            while TABLE_OFFSET < TABLE_END
+            append #off
+        endif
+    endif
+
+    # chunked copy done
+    if RIP_OK == 1
+        # detect extension in some cases
+        goto UEXP_OFFSET
+        callfunction CHECK_EXTENSION 1
+
+        get NAME basename 0
+        string NAME += FILE_EXT
+
+        math OFFSET = 0
+        get SIZE asize MEMORY_FILE
+
+        log NAME OFFSET SIZE MEMORY_FILE
+    endif
+endfunction
+
+#------------------------------------------------------------------------------
+
+startfunction LOAD_FORMAT_STANDARD
+
+    xmath TEMP_OFFSET "UEXP_OFFSET - 0x0c"
+    if RIP_OK == 0 && TEMP_OFFSET >= 0
+        goto TEMP_OFFSET
+
+        get TEST long
+        get FIRST_SIZE long
+        get FIRST_SIZE2 long
+
+        if FIRST_SIZE > 0 && TEST == 0 && FIRST_SIZE == FIRST_SIZE2
+            math RIP_OK = 1
+        endif
+    endif
+
+    xmath TEMP_OFFSET "UEXP_OFFSET - 0x24"
+    if RIP_OK == 0 && TEMP_OFFSET >= 0
+        goto TEMP_OFFSET
+
+        get TEST long
+        get FIRST_SIZE long
+        get FIRST_SIZE2 long
+
+        if FIRST_SIZE > 0 && TEST == 1 && FIRST_SIZE == FIRST_SIZE2
+            math RIP_OK = 1
+        endif
+    endif
+
+    xmath TEMP_OFFSET "UEXP_OFFSET - 0x14"
+    if RIP_OK == 0 && TEMP_OFFSET >= 0
+        goto TEMP_OFFSET
+
+        get TEST long
+        get FIRST_SIZE long
+
+        if FIRST_SIZE >= 0x40 && TEST == 0
+            math RIP_OK = 1
+        endif
+    endif
+
+    xmath TEMP_OFFSET "UEXP_OFFSET - 0x14"
+    if RIP_OK == 0 && TEMP_OFFSET >= 0
+        goto TEMP_OFFSET
+
+        get TEST long
+        get FIRST_SIZE long
+        get FIRST_SIZE2 long
+
+        if FIRST_SIZE > 0 && TEST < 0x100 && FIRST_SIZE == FIRST_SIZE2
+            math RIP_OK = 1
+        endif
+    endif
+
+    # ubulk with a plain RIFF
+    if RIP_OK == 0 && UEXP_OFFSET == 0x00 && SEARCH_STRING == "RIFF"
+        goto UEXP_OFFSET
+        get RIFF_ID long
+        get RIFF_SIZE long
+        xmath FIRST_SIZE "RIFF_SIZE + 0x08"
+        if FILE_SIZE == FIRST_SIZE
+            math RIP_OK = 1
+        endif
+    endif
+
+    if RIP_OK == 0
+        callfunction TEST_SEEK_V2 1
+    endif
+endfunction
+
+startfunction LOAD_FORMAT_CHUNKED
+
+    if RIP_OK == 0
+        # older UE files have first chunk size right before payload, then chunk table after that
+        xmath FIRST_OFFSET "UEXP_OFFSET - 0x10"
+        goto FIRST_OFFSET 0
+        get FIRST_SIZE long 0
+        if FIRST_SIZE > 0 && FIRST_SIZE < FILE_SIZE
+            math RIP_OK = 1
+        endif
+    endif
+
+    if RIP_OK == 0
+        callfunction TEST_SEEK_V2 1
+    endif
+
+    if TABLE_FORMAT == 0
+        xmath TABLE_OFFSET "UEXP_OFFSET + FIRST_SIZE"
+        xmath TABLE_END "FILE_SIZE - 0x04" #some files have the UE footer
+    endif
+
+endfunction
+
+
+# Newer UEBA versions have an chunk table in the middle, and after first section (class/name/etc)
+startfunction TEST_SEEK_V2
+    goto 0x18 0
+    get SECTION2_OFFSET long
+
+    # probably not always correct but meh. Table position and nearby fields varies between UE5 versions.
+    # This FFFFFFF value exists for non-new tables but should match certain checks
+    findloc NEW_TABLE_OFFSET string "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF" 0 ""
+    if NEW_TABLE_OFFSET != "" && NEW_TABLE_OFFSET < SECTION2_OFFSET
+        goto NEW_TABLE_OFFSET
+        get DUMMY long #-1
+        get DUMMY long #-1
+        get FIRST_SIZE long
+        get FIRST_DUMMY long
+
+        if FIRST_SIZE > 0 && FIRST_DUMMY == 0 && FIRST_SIZE < FILE_SIZE
+            math RIP_OK = 1
+            math TABLE_FORMAT = 1
+
+            # There is also a table near EOF like v0, but rarely there are multiple memory chunks ordered like this:
+            #   memchunk + mini-table / memchunk + mini-table / ... / streamchunk table
+            # It's hard to detect the multiple memchunks, so just use the new table.
+            #
+            # streamchunks format is CHUNK_FLAGS + CHUNK_NUMBER + CHUNK_SIZE + CHUNK_DATA,
+            # flags:
+            # - 0x01: Robocop = chunk offset is implicit
+            # - 0x03: PBBGU, Maximum Footbal, Fortnite ~2023 = has an extra chunk offset field
+
+            math NEW_TABLE_OFFSET -= 0x08 #actual start
+
+            xmath TEMP_OFFSET "NEW_TABLE_OFFSET - 0x08"
+            goto TEMP_OFFSET
+            get NEW_TABLE_SIZE longlong
+
+            goto 0x04
+            get AUDIO_PACKET_OFFSET long
+
+            xmath TABLE_OFFSET "NEW_TABLE_OFFSET"
+            xmath TABLE_END "NEW_TABLE_OFFSET + NEW_TABLE_SIZE"
+        endif
+    endif
+endfunction
