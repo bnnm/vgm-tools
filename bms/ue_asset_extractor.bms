@@ -11,14 +11,12 @@ math RIP_OK = 0
 callfunction SETUP_FILES 1
 callfunction EXTRACT_ASSETS 1
 
-# sometimes ubulk has the whole asset
-if RIP_OK == 0 && EXISTS_UASSET == 1 && EXISTS_UBULK == 1
+# sometimes ubulk/uexp has the whole asset, try again non-chunked
+if RIP_OK == 0 && IS_CHUNKED == 1
     math IS_CHUNKED = 0
-    open FDDE UBULK 0
+    callfunction SETUP_FILES_NONCHUNKED 1
     callfunction EXTRACT_ASSETS 1
 endif
-
-
 
 startfunction EXTRACT_ASSETS
     get FILE_SIZE asize 0
@@ -53,6 +51,9 @@ startfunction EXTRACT_ASSETS
         callfunction EXTRACT_FILE 1 "ABEU" ".ueba" #.binka is probably ok
     endif
     if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "BKHD" ".bnk" #not seen but before RIFF as it's a container
+    endif
+    if RIP_OK == 0
         callfunction EXTRACT_FILE 1 "OggS" ".ogg"
     endif
     if RIP_OK == 0
@@ -77,23 +78,41 @@ startfunction SETUP_FILES
     open FDDE UBULK 1 EXISTS_UBULK
     open FDDE UEXP 9 EXISTS_UEXP
 
-    if EXISTS_UBULK == 1 && EXISTS_UEXP == 1
-        open FDDE UEXP 0
-        #open FDDE UBULK 1
-        math IS_CHUNKED = 1
-    elif EXISTS_UBULK == 1 && EXISTS_UASSET == 1
+    if EXISTS_UASSET == 1 && EXISTS_UEXP == 1 && EXISTS_UBULK == 1
+        #print "setup: uasset+uexp+ubulk" #seen in wwise memory + streams
         #open FDDE UASSET 0
         #open FDDE UBULK 1
         math IS_CHUNKED = 1
-    elif EXISTS_UASSET == 1 && EXISTS_UEXP == 1 && FILE_SIZE < 0x1000
-        # UE4 sometimes
+    elif EXISTS_UEXP == 1 && EXISTS_UBULK == 1
+        #print "setup: uexp+ubulk"
+        open FDDE UEXP 0
+        #open FDDE UBULK 1
+        math IS_CHUNKED = 1
+    elif EXISTS_UASSET == 1 && EXISTS_UBULK == 1
+        #print "setup: uasset+ubulk"
+        #open FDDE UASSET 0
+        #open FDDE UBULK 1
+        math IS_CHUNKED = 1
+    elif EXISTS_UASSET == 1 && EXISTS_UEXP == 1
+        #print "setup: uasset+uexp"
+        #open FDDE UASSET 0
+        open FDDE UEXP 1
+        math IS_CHUNKED = 1
+    else
+        callfunction SETUP_FILES_NONCHUNKED 1
+    endif
+endfunction
+
+startfunction SETUP_FILES_NONCHUNKED
+    if EXISTS_UBULK == 1
+        #print "setup: ubulk"
+        open FDDE UBULK 0
+    elif EXISTS_UEXP == 1
+        #print "setup: uexp"
         open FDDE UEXP 0
     elif EXISTS_UASSET == 1
-        #open FDDE UASSET 0
-    elif EXISTS_UEXP == 1
-        open FDDE UEXP 0
-    elif EXISTS_UBULK == 1
-        open FDDE UBULK 0
+        #print "setup: uasset"
+        open FDDE UASSET 0
     endif
 endfunction
 
@@ -116,7 +135,7 @@ startfunction CHECK_EXTENSION
                 string FILE_EXT = ".wav"
             elif FORMAT == 0x0002
                 string FILE_EXT = ".adpcm"
-            elif FORMAT > 0x0002 && FORMAT > 0xFFFD
+            elif FORMAT > 0x0002 && FORMAT < 0xFFFD
                 string FILE_EXT = ".wem"
             elif FORMAT == 0xFFFE && FMT_SIZE <= 0x18
                 #real 0xFFFE RIFF should have a GUID I think
