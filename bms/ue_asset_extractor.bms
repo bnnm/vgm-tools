@@ -68,6 +68,9 @@ startfunction EXTRACT_ASSETS
     if RIP_OK == 0
         callfunction EXTRACT_FILE 1 "mabf" ".mab"
     endif
+    if RIP_OK == 0
+        callfunction EXTRACT_FILE 1 "ARAD" ".rada"
+    endif
 
 endfunction
 
