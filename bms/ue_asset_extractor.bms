@@ -71,6 +71,9 @@ startfunction EXTRACT_ASSETS
     if RIP_OK == 0
         callfunction EXTRACT_FILE 1 "ARAD" ".rada"
     endif
+    if RIP_OK == 0
+        callfunction EXTRACT_PCM 1
+    endif
 
 endfunction
 
@@ -172,6 +175,31 @@ startfunction EXTRACT_FILE
     else 
         callfunction EXTRACT_FILE_CHUNKED 1
     endif
+endfunction
+
+# raw pcm seen in Stellar Blade, probably wrong for other files
+startfunction EXTRACT_PCM
+    goto 0x00 0
+
+    findloc UEXP_OFFSET1 string "PCMDataArray" 0 ""
+    findloc UEXP_OFFSET2 string "SBSoundPCMData" 0 ""
+    if UEXP_OFFSET1 != "" && UEXP_OFFSET2 != ""
+        goto 0x34 0
+        get HEADER_OFFSET long
+        get HEADER_SIZE long
+        if HEADER_SIZE == 0x40 || HEADER_SIZE == 0x2c || HEADER_SIZE == 0x54
+            math RIP_OK = 1
+            
+            xmath OFFSET " HEADER_OFFSET + HEADER_SIZE "
+            xmath SIZE "FILE_SIZE - OFFSET"  #matches one of the fields, sometimes odd
+
+            get NAME basename
+            string NAME += ".pcm"
+
+            log NAME OFFSET SIZE
+        endif
+    endif
+
 endfunction
 
 
