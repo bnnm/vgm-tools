@@ -1,6 +1,6 @@
 # makes !tags.m3u from "tagged" (renamed) files
-# - put renamed files in "RENAMED" dir
-# - put original names in "ORIGINAL" dir
+# - put renamed files in "tagged" dir
+# - put original names in "untagged" dir
 # - run
 # By default reads tags like "(artist) - (title)", change only_name if needed
 
@@ -16,8 +16,8 @@ size_threshold = 0x100
 write_track = False
 write_artist = True
 
-dir_ren = 'RENAMED'
-dir_ori = 'ORIGINAL'
+dir_tg = 'tagged'
+dir_ut = 'untagged'
 chunk = 0x10000
 
 
@@ -54,27 +54,27 @@ def get_items(path):
 
 
 def main():
-    items_ren = get_items(dir_ren + '/*.*')
-    items_ori = get_items(dir_ori + '/*.*')
+    items_tg = get_items(dir_tg + '/*.*')
+    items_ut = get_items(dir_ut + '/*.*')
 
     tags = []
-    for hash_ren, file_ren in items_ren:
+    for hash_tg, file_tg in items_tg:
         found = False
 
-        base_ren = os.path.basename(file_ren)
-        base_ren = os.path.splitext(base_ren)[0]
+        base_tg = os.path.basename(file_tg)
+        base_tg = os.path.splitext(base_tg)[0]
 
         match = None
 
         if not match:
-            match = pt_tags1.fullmatch(base_ren)
+            match = pt_tags1.fullmatch(base_tg)
             if match:
                 track = match.group(1)
                 artist = match.group(2)
                 title = match.group(3)
 
         if not match:
-            match = pt_tags2.fullmatch(base_ren)
+            match = pt_tags2.fullmatch(base_tg)
             if match:
                 track = match.group(1)
                 artist = None
@@ -83,24 +83,24 @@ def main():
         if not match or force_title:
             track = None
             artist = None
-            title = base_ren
+            title = base_tg
 
         # find file
-        for hash_ori, file_ori in items_ori:
+        for hash_ut, file_ut in items_ut:
             if use_size:
-                if not (hash_ren <= hash_ori and hash_ren + size_threshold >= hash_ori):
+                if not (hash_tg <= hash_ut and hash_tg + size_threshold >= hash_ut):
                     continue
             else:
-                if hash_ren != hash_ori:
+                if hash_tg != hash_ut:
                     continue
-            base_new = os.path.basename(file_ori)
+            base_new = os.path.basename(file_ut)
 
-            tags.append((base_new, track, artist, title, base_ren))
+            tags.append((base_new, track, artist, title, base_tg))
             found = True
             #don't break in case of repeats
 
         if not found:
-            tags.append(('#?', track, artist, title, base_ren))
+            tags.append(('#?', track, artist, title, base_tg))
 
 
     if order_by_renamed:
@@ -139,7 +139,7 @@ def main():
     header.append('')
 
 
-    with open(dir_ori+'/!tags.m3u', 'w', encoding='utf-8-sig') as f:
+    with open(dir_ut+'/!tags.m3u', 'w', encoding='utf-8-sig') as f:
         f.write('\n'.join(header))
         f.write('\n'.join(lines))
 
