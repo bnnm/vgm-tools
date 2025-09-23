@@ -39,7 +39,7 @@
 #       Lower it if files are somewhat different but still similar (such as extended intros).
 # -s N: tests more seconds, slightly increases accuracy but is slower. 15-30s is usually good enough.
 #       If your game has many files that start the same but change after a while you may need more seconds.
-# -ts: prints scores in !tags.m3u to help identify wrong matches.
+# -tis: prints scores in !tags.m3u to help identify wrong matches.
 # -r N: resample value. Files are resampled before comparing but default is usually best.
 #       High or low values may decrease accuracy for files of different qualities.
 #
@@ -123,9 +123,10 @@ class Cli(object):
         p.add_argument('-q',    '--quicker',        help="Simplifies some calculations to speed up matching", action='store_true')
         p.add_argument('-m',    '--method',         help="Comparator method (multiple|dtw|euc|cos, default: multiple)", default=ComparisonMethod.AUTO)
         p.add_argument('-to',   '--tags-order',     help="Set how tags.m3u files are sorted (files|tags, default: auto)", default=OrderMethod.TAGS)
-        p.add_argument('-ts',   '--tags-score',     help="Include similarity scores in tags (for easier identifying wrong stuff)", action='store_true')
         p.add_argument('-taa',  '--tags-add-artist',help="Include 'artist' (if found)", action='store_true')
         p.add_argument('-tat',  '--tags-add-track', help="Include 'track' and 'discs' per file (if found)", action='store_true')
+        p.add_argument('-tis',  '--tags-info-score',help="Include similarity scores in tags (for easier identifying wrong stuff)", action='store_true')
+        p.add_argument('-tif',  '--tags-info-file', help="Include 'tagged' filename (for rips where title<>filename differs)", action='store_true')
         args = p.parse_args()
 
         return args
@@ -346,8 +347,10 @@ class TagsM3uMaker:
         file_ut = result.file_ut
         score = result.score
 
-        if self._args.tags_score and score is not None:
+        if self._args.tags_info_score and score:
             self._lines.append(f'## score: {score:.3f}')
+        if self._args.tags_info_file and result.basename_tg:
+            self._lines.append(f'## file: {result.basename_tg}')
 
         if tags:
             extra = ''
@@ -919,11 +922,12 @@ class Sorter:
         sort_items.append(is_matched)
         # dir first for better order when mixing tags from multiple albums
         sort_items.append(dirname) 
+        sort_items.append(disc)
+        sort_items.append(track)
         if tags and tags.track:
-            sort_items.append(disc)
-            sort_items.append(track)
+            sort_items.append('') #in case filename is wonky
         else:
-            sort_items.append(filename) 
+            sort_items.append(filename)
         sort_items.append(title)
         sort_items.append(score)
 
@@ -933,6 +937,8 @@ class Sorter:
 
             file_ut = Sorter.get_natsort_str(file_ut)
             sort_items.append(file_ut)
+        else:
+            sort_items.append('')
 
         return sort_items
 
