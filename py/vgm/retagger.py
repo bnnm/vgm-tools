@@ -1,7 +1,7 @@
 # RETAGGER - TAGSM3U AUTOMAKER
 #
 # Compares similar files from a 'tagged' folder vs an 'untagged' folder and makes a !tags.m3u for matches cases.
-# Files can be of any format that vgmstream supports (even .flac or .mp3). Accuracy is pretty ok enough can be slow.
+# Files can be of any format that vgmstream supports (even .flac or .mp3). Accuracy is pretty ok, it's a bit slow.
 #
 # For renamed files (like '01 Artist - Title.adx' <> 'BGM01.adx') better use filetags-to-tagsm3u.py instead.
 #
