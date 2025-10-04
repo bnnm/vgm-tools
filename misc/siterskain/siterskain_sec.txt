@@ -1,0 +1,64 @@
+// decomp:
+// default key (not used?) is "SITERSKAIN-\x81"
+
+00000000 unxor_t         struc ; (sizeof=0x20, mappedto_86)
+00000000 unk             dd ?
+00000004 key             db 16 dup(?)
+00000014 key_len         dd ?
+00000018 key_pos         dd ?
+0000001C scramble        dd ?
+00000020 unxor_t         ends
+
+int __thiscall xor_process(unxor_t *ctx, char *src, char *dst, int data_len, char *key)
+{
+  int i; // esi
+
+  xor_setup_key(ctx, key);
+  for ( i = 0; i < data_len; ++i )
+    dst[i] = xor_undo_byte(ctx, src[i]);
+  return 0;
+}
+
+void __thiscall xor_setup_key(unxor_t *ctx, char *key)
+{
+  int str_len; // eax
+  size_t max_len; // esi
+
+  if ( key && (str_len = strlen(key), max_len = str_len, str_len > 0) )
+  {
+    if ( str_len > 15 )
+      max_len = 15;
+    memcpy(ctx->key, key, max_len);
+    ctx->key[max_len] = 0;
+    ctx->key_len = max_len;
+    ctx->scramble = 0;
+    ctx->key_pos = 0;
+  }
+  else
+  {
+    ctx->key_len = 0;
+    ctx->scramble = 0;
+    ctx->key_pos = 0;
+  }
+}
+
+char __thiscall xor_undo_byte(unxor_t *unxor_t, char byte)
+{
+  int key_pos; // eax
+  char key; // dl
+
+  if ( !unxor_t->key_len )
+    return byte;
+  key_pos = unxor_t->key_pos;
+  key = unxor_t->key[key_pos];
+  if ( key )
+  {
+    unxor_t->key_pos = key_pos + 1;
+  }
+  else
+  {
+    key = unxor_t->scramble;
+    ++unxor_t->scramble;
+    unxor_t->key_pos = 0;
+  }
+  return key ^ __ROR1__(byte, (key + LOBYTE(unxor_t->scramble)) & 7);

@@ -1,0 +1,148 @@
+# Yeti engine sound.fat + sound.bin extractor (Beowulf: The Game)
+
+math IS_FILTER_BAOS = 1 #ignore less useful BAOs
+math ADD_SUBFOLDERS = 0 #BAO IDs repeat at different offsets (subfolders) but probably can be ignored
+
+#---------------------------------------
+
+open FDSE "sound.bin" 1
+
+# PS3 version only
+open FDSE "stream.bin" 2 HAS_STREAM
+math IS_PS3 = HAS_STREAM
+
+
+# 0x00-1c: counts? but don't seem to match totals or anything (maybe one is number of languages)
+get UNKNOWN long
+endian guess UNKNOWN
+
+goto 0x1c
+get DIRS long
+
+
+### extract sound BAOs
+math IS_LANG = 0
+
+string FOLDER = "sound"
+callfunction SAVE_DIRS 1
+
+### extract language BAOs (same number of dirs but no DIR_IDs)
+math IS_LANG = 1
+math DIR_ID = 0
+
+if IS_PS3 == 1
+    open FDSE "English/stream.bin" 2 HAS_STREAM
+endif
+string FOLDER = "English"
+callfunction SAVE_DIRS 1
+
+if IS_PS3 == 1
+    open FDSE "French/stream.bin" 2 HAS_STREAM
+endif
+string FOLDER = "French"
+callfunction SAVE_DIRS 1
+
+if IS_PS3 == 1
+    open FDSE "German/stream.bin" 2 HAS_STREAM
+endif
+string FOLDER = "German"
+callfunction SAVE_DIRS 1
+
+if IS_PS3 == 1
+    open FDSE "Italian/stream.bin" 2 HAS_STREAM
+endif
+string FOLDER = "Italian"
+callfunction SAVE_DIRS 1
+
+if IS_PS3 == 1
+    open FDSE "Spanish/stream.bin" 2 HAS_STREAM
+endif
+string FOLDER = "Spanish"
+callfunction SAVE_DIRS 1
+
+#------------------------
+
+startfunction SAVE_DIRS
+    #print "*** BAOs %FOLDER% (%DIRS%)"
+    if IS_PS3 == 1 && HAS_STREAM == 0
+        print "missing stream.bin in %FOLDER% subfolder, won't be able to extract streamed BAOs"
+    endif
+    
+
+    for DIR = 0 < DIRS
+        #savepos CURRENT
+        #print "D=%CURRENT|x%"
+
+        if IS_LANG == 0
+            get DIR_ID long
+        endif
+        get FILES long
+
+        callfunction SAVE_FILES 1
+    next DIR
+
+endfunction
+
+startfunction SAVE_FILES
+
+    for FILE = 0 < FILES
+        get BAO_ID long
+        get OFFSET long
+        get SIZE long
+
+        # streamed .bao (5xxxxxxx) don't seem to be called .sbao in exe
+        # DIR_ID is needed since BAO IDs repeat
+        if ADD_SUBFOLDERS != 0
+            string NAME p= "%s/%04i_%08x/%08x.bao" FOLDER DIR DIR_ID BAO_ID 
+        else
+            string NAME p= "%s/%08x.bao" FOLDER BAO_ID
+        endif
+
+        math IS_WRITE = 1
+        xmath BAO_CLASS "(BAO_ID & 0xF0000000) >> 24"
+        if IS_FILTER_BAOS == 1
+            callfunction FILTER_BAO 1
+        endif
+
+        #print "    %BAO_ID|x%, o=%OFFSET|x%, s=%SIZE|h%"
+
+        if IS_WRITE == 1
+            if IS_PS3 == 1 && BAO_CLASS == 0x50
+                if HAS_STREAM == 1
+                    #print "    %NAME%, o=%OFFSET|x%, s=%SIZE|h% (streamed.bin)"
+                    log NAME OFFSET SIZE 2 #streamed BAO
+                else
+                    #print "    %NAME%, o=%OFFSET|x%, s=%SIZE|h% (missing.bin)"
+                endif
+            else
+                #print "    %NAME%, o=%OFFSET|x%, s=%SIZE|h%"
+                log NAME OFFSET SIZE 1
+            endif
+        endif
+    next FILE
+
+endfunction
+
+startfunction FILTER_BAO
+
+    # filter cue baos
+    if IS_WRITE == 1 && BAO_CLASS == 0x10
+        math IS_WRITE = 0
+    endif
+
+    # filter chain baos
+    if IS_WRITE == 1 && BAO_CLASS == 0x20
+        #math IS_WRITE = 0
+        goto OFFSET 1
+        get BAO_ID long 1
+        if BAO_ID == 0x011B0200 || BAO_ID == 0x00021B01
+            xmath OFFSET_TYPE "OFFSET + 0x28"
+            goto OFFSET_TYPE 1
+            get BAO_TYPE long 1
+            if BAO_TYPE != 0x01 && BAO_TYPE != 0x05 && BAO_TYPE != 0x06
+                math IS_WRITE = 0    
+            endif
+        endif
+    endif
+    
+endfunction

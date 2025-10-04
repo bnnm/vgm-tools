@@ -156,7 +156,7 @@ class Logger(object):
 
 
 class FileLoader():
-    IGNORED_EXTS = ('.bat', '.sh', '.exe', '.dll', '.m3u', '.7z', '.zip', '.rar', '.txt', '.lnk', '.py', '.cue', '.png', '.jpg', '.jpeg', '.db')
+    IGNORED_EXTS = ('.bat', '.sh', '.exe', '.dll', '.m3u', '.7z', '.zip', '.rar', '.txt', '.lnk', '.py', '.cue', '.png', '.jpg', '.jpeg', '.bmp', '.sfv', '.db')
 
     @staticmethod
     def find_files(root_dir, filters=None):
