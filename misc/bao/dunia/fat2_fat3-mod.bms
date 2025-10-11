@@ -1,0 +1,261 @@
+# FAT2 and FAT3 Ubisoft games Dunia filesystem (sciprt 0.1.6)
+#   Far Cry 3
+#   Far Cry 4
+#   Watch Dogs
+#   The Crew
+#   The Crew 2
+#   Far Cry: Vengeance
+# script for QuickBMS http://quickbms.aluigi.org
+#
+# mod by bnnm
+
+
+quickbmsver "0.6"
+
+open "FDDE" "fat" 0
+open "FDDE" "dat" 1
+
+# REMOVED: .nfo format is sometimes an .xml
+
+getdstring FAT_SIGN 4
+if FAT_SIGN == "3TAF"
+    set FAT_SIGN string "FAT3"
+elif FAT_SIGN == "FAT3"
+    endian big
+elif FAT_SIGN == "2TAF"
+    set FAT_SIGN string "FAT2"
+elif FAT_SIGN == "FAT2"
+    endian big
+elif FAT_SIGN == "DAT2"
+elif FAT_SIGN == "2TAD"
+    endian big
+    set FAT_SIGN string "DAT2"
+else
+    print "Error: invalid FAT signature %FAT_SIGN%"
+    cleanexit
+endif
+
+if FAT_SIGN == "DAT2"
+    # nothing
+else
+    get VERSION long
+    get DUMMY long
+
+    if FAT_SIGN == "FAT2"
+    if VERSION >= 9
+        xmath FLAG1 "DUMMY & 0xff"  # platform?
+        xmath FLAG2 "(DUMMY >> 8) & 0xff"
+        get DUMMY long
+        get DUMMY long
+    endif
+    endif
+endif
+
+get FILES long
+
+math IS_BE = 0
+if FAT_SIGN == "FAT2" && VERSION >= 9
+    if FLAG1 == 2 || FLAG1 == 3  # x360 and PS3
+        math IS_BE = 1
+        endian big
+    endif
+endif
+
+for i = 0 < FILES
+    #savepos CURRENT
+    #print " pos=%CURRENT|x%"
+    
+    math IS_CHUNKED = 0
+
+    if FAT_SIGN == "FAT2"
+        if VERSION >= 9
+            get NAME_CRC longlong
+            get SIZE long
+            get OFFSET long
+            get ZSIZE long
+        else
+            get SIZE long
+            get ZERO long
+            get NAME_CRC longlong
+            get ZSIZE long
+            get OFFSET long
+        endif
+
+        xmath OFFSET "(OFFSET << 2) | (ZSIZE >> 30)"
+        xmath ZSIZE "ZSIZE & ((1 << 30) - 1)"
+        xmath ZTYPE "SIZE & 3"
+        xmath SIZE "SIZE >> 2"
+        if VERSION >= 9
+            if FLAG2 == 4 && ZTYPE == 2
+                math IS_CHUNKED = 1
+            endif
+        endif
+    elif FAT_SIGN == "DAT2"
+        get OFFSET long
+        get SIZE long
+        get NAME_CRC long
+    else
+        get NAME_CRC long
+        get SIZE long
+        get ZSIZE long
+        get OFFSET long
+        xmath OFFSET "(OFFSET << 3) | (ZSIZE >> 29)"
+        xmath ZSIZE "ZSIZE & ((1 << 29) - 1)"
+        xmath ZTYPE "SIZE & 7"
+        xmath SIZE "SIZE >> 3"
+    endif
+
+    callfunction GET_NAME_FROM_CRC 1
+    #print " %NAME%: o=%OFFSET|x% z=%ZSIZE|x% s=%SIZE|x% zt=%ZTYPE%"
+
+
+    if SIZE == 0
+        if ZSIZE > 0
+            log NAME OFFSET ZSIZE 1
+        endif
+
+    elif FAT_SIGN == "FAT2" && IS_CHUNKED == 0
+        if VERSION >= 9
+              if ZTYPE == 0
+                comtype lzma_dynamic
+            elif ZTYPE == 1
+                comtype lzo1x
+            elif ZTYPE == 2
+                comtype copy #deflate #???
+            elif ZTYPE == 3
+                comtype xmemdecompress #???
+            endif
+        else
+            if VERSION == 6 # The Crew 2
+                comtype oodle
+            else
+                comtype lzo1x
+            endif
+        endif
+
+        clog NAME OFFSET ZSIZE SIZE 1
+
+    elif FAT_SIGN == "DAT2"
+        log NAME OFFSET SIZE 1
+    else
+        goto OFFSET 1
+        get TMP long 1
+        if TMP == 0xee12f50f
+       
+            endian big  # no way to save current endianess in quickbms at the moment
+
+            # from xcompress_file.bms
+            get ContextFlags long 1
+              get Version short 1   # ???
+              get Reserved short 1  # ???
+              get Flags long 1
+              get WindowSize long 1
+              get CompressionPartitionSize long 1
+            get UncompressedSizeHigh long 1
+            get UncompressedSizeLow long 1
+            get CompressedSizeHigh long 1
+            get CompressedSizeLow long 1
+            get UncompressedBlockSize long 1
+            get CompressedBlockSizeMax long 1
+
+            string ARGS p= "%d %d" WindowSize CompressionPartitionSize
+            comtype XMemDecompress ARGS
+            
+            putvarchr MEMORY_FILE UncompressedSizeLow 0 # pre-allocate for speed
+            log MEMORY_FILE 0 0 # init
+            append
+            for MYSIZE = 0 < UncompressedSizeLow
+                get CompressedBlockSize long 1
+                savepos OFFSET 1
+                clog MEMORY_FILE OFFSET CompressedBlockSize UncompressedBlockSize 1
+                math OFFSET += CompressedBlockSize
+                goto OFFSET 1
+                math MYSIZE += UncompressedBlockSize
+            next
+            append
+
+            endian little   # restore
+            
+        else
+            goto OFFSET 1
+            comtype deflate
+            math CHUNK_OFFSET = 0
+            math CHUNK_SIZE = 0x00010000
+            xmath ALIGNMENT "OFFSET & 0xf"
+
+            endian little
+            get CHUNKS short 1
+            get DUMMY short 1   # 0xfff
+
+            for x = 0 < CHUNKS
+                xmath NEXT_OFFSET "OFFSET + 0x10"
+                savepos TMP 1
+                if TMP >= NEXT_OFFSET
+                    math OFFSET = CHUNK_OFFSET
+                    goto OFFSET 1
+                    xmath NEXT_OFFSET "OFFSET + 0x10"
+                    math CHUNK_OFFSET = 0
+                endif
+                if CHUNK_OFFSET == 0
+                    math CHUNK_OFFSET = NEXT_OFFSET
+                endif
+                get CHUNK_ZSIZE short 1
+                putarray 0 x CHUNK_ZSIZE
+                putarray 1 x CHUNK_OFFSET
+                
+                if CHUNK_ZSIZE == 0
+                    math CHUNK_OFFSET += 0x10000
+                else
+                    math CHUNK_OFFSET += CHUNK_ZSIZE
+                endif
+                for
+                    xmath TMP "CHUNK_OFFSET & 0xf"
+                    if TMP == ALIGNMENT
+                        break
+                    endif
+                next CHUNK_OFFSET
+            next x
+     
+            putvarchr MEMORY_FILE SIZE 0
+            log MEMORY_FILE 0 0
+            append
+            for x = 0 < CHUNKS
+                getarray CHUNK_ZSIZE 0 x
+                getarray CHUNK_OFFSET 1 x
+                #print "CHUNKS=%CHUNK_OFFSET|h% %CHUNK_ZSIZE|h% "
+
+                if CHUNK_ZSIZE == 0
+                    log MEMORY_FILE CHUNK_OFFSET CHUNK_SIZE 1
+                else
+                    goto CHUNK_OFFSET 1
+                    clog MEMORY_FILE CHUNK_OFFSET CHUNK_ZSIZE CHUNK_SIZE 1
+                endif
+            next x
+            append
+        endif
+
+        if IS_BE == 1
+            endian big
+        endif
+
+        # add missing 0x00 bytes
+        putvarchr MEMORY_FILE SIZE 0
+
+        log NAME 0 SIZE MEMORY_FILE
+    endif
+
+next i
+
+startfunction GET_NAME_FROM_CRC
+    xmath TMP_CRC "NAME_CRC >> 32"
+    
+    if VERSION >= 9
+        if IS_BE == 1
+            string NAME p "%08x%08x" TMP_CRC NAME_CRC #be
+        else
+            string NAME p "%08x%08x" NAME_CRC TMP_CRC #le
+        endif
+    else
+        string NAME p "%08x" NAME_CRC
+    endif
+endfunction

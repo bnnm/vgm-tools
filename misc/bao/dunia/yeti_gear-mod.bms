@@ -1,0 +1,67 @@
+# Yeti Engine (GEAR BigFile) (script 0.2)
+# script for QuickBMS http://quickbms.aluigi.org
+
+idstring "[ GEAR BigFile ]"
+get DUMMY long  # 0x6f
+get DUMMY long  # 0xaa080004
+get FILES long
+get TSTAMP long
+for i = 0 < FILES
+    get OFFSET longlong
+    putarray 0 i OFFSET
+next i
+for i = 0 < FILES
+    get SIZE long
+    putarray 1 i SIZE
+next i
+for i = 0 < FILES
+    get NAME_CRC long
+    putarray 2 i NAME_CRC
+next i
+for i = 0 < FILES
+    get ZIP byte
+    putarray 3 i ZIP
+next i
+
+for i = 0 < FILES
+    getarray OFFSET   0 i
+    getarray SIZE     1 i
+    getarray NAME_CRC 2 i
+    getarray ZIP      3 i
+    
+    string NAME p= "%08x" NAME_CRC
+
+    if ZIP == 0
+        log NAME OFFSET SIZE
+    else
+        goto OFFSET
+        get CHUNK_SIZE_BITS byte
+        math CHUNK_SIZE = 1
+        math CHUNK_SIZE << CHUNK_SIZE_BITS
+        math CHUNKS = SIZE
+        math CHUNKS / CHUNK_SIZE
+        if SIZE % CHUNK_SIZE
+            math CHUNKS + 1
+        endif
+        savepos OFFSET
+        xmath OFFSET "OFFSET + (CHUNKS * 4)"
+        putvarchr MEMORY_FILE SIZE 0
+        log MEMORY_FILE 0 0
+        append
+        math NEXT_CHUNK_OFF = 0
+        for x = 0 < CHUNKS
+            math CHUNK_OFF = NEXT_CHUNK_OFF
+            get NEXT_CHUNK_OFF long
+            math CHUNK_ZSIZE = NEXT_CHUNK_OFF
+            math CHUNK_ZSIZE - CHUNK_OFF
+            math CHUNK_OFF + OFFSET
+            if CHUNK_ZSIZE == CHUNK_SIZE
+                log MEMORY_FILE CHUNK_OFF CHUNK_SIZE
+            else
+                clog MEMORY_FILE CHUNK_OFF CHUNK_ZSIZE CHUNK_SIZE
+            endif
+        next x
+        append
+        log NAME 0 SIZE MEMORY_FILE
+    endif
+next i
