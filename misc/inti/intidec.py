@@ -13,8 +13,8 @@
 # and supports file table decryption used in the latest games
 #
 # for long hashes hash-renamer.py + filelists in 
-# for short filenames, hash is unknown but names are previsible and 
-# c4f76749, 85b3c32d/b845e4c2, 4ddd7369 seem to be the "sound"/"group"/"stream"/etc folders
+# for short filenames, hash is unknown but names are previsible and c4f76749, 
+# 85b3c32d/b845e4c2, 4ddd7369 seem to be the "sound"/"group"/"stream"/etc folders
 #
 # ---
 #
@@ -23,29 +23,38 @@
 # - we need to locate the real start of this list so it can be used to decrypt
 # - the list is basically a binary minidatabase embedded in the exe (it's referred internally as a type of 'list')
 # - currently there are 2 list formats but they should be autodetected
-# - tips to find them (needs a hex editor):
-#   - it's useful to look at previous games' exes list first (offset listed in the help below) so you know it looks
-#   - then look for "Common/" or other dir name or file (the list includes "path/file" strings)
-#   - now go back from that point and see if you find the list header
-#     - along the way there should be a long list of 0x10 entries in this format:
-#       00: hash/id
-#       04: number or FFFFFFFF 
-#       08: FFFFFFFF
-#       0c: number
-#       (beware as they don't need to be 32-bit aligned)
-#     - then other list that is mostly 0s
-#     - if you reach lists of strings or other structures like the above, you are past the header
-#   - header has values and offsets (see parse_list_gg/gv below) so it shouldn't be hard to manually check the exact start
-#     - gg usually looks like: "0C000000 08000000 NNNNNNNN 30000000"
-#     - gv usually looks like: "NNNNNNNN NNNNNNNN NNNNNNNN NNNNNNNN 20000000"
-#       - where NN are usually lowish numbers, little endian
-#   - note this list format is used for multiple things to make sure the header you found is for the filelist
-#   - if going back fails, try decompiling (IDA/Ghidra/etc) and see offsets near the filenames
-# - apart from the list decryption needs a base key, but it's usually "(blah).oss" so easy to find
-#   - or use strings2.exe and check simple/suspicious strings
-#   - or decompile and see decryption calls
-# - do note that the filenames are hashed, but in binary list-bin follow the original order
-#   (IOW: use them to make an ordered playlist, ex. */4ddd7369/* = ordered streams)
+# - it's useful to look at previous games' exes list first (offset listed in the help below) so you know it looks
+#
+# Tips to find the list starting offset (needs a hex editor):
+# - use hex editor's "find" to look for "Common/" string, or a similar dir name/file (the list has "path/file" strings)
+#   - from that point we need to move backwards until we fin the list1's start
+# - now find *backwards* hex integer FFFFFFFF, this should find list2's last entry
+# - scrolling upwards there should be a long list of 0x10 entries in this format:
+#     00: hash/id
+#     04: number or FFFFFFFF 
+#     08: FFFFFFFF
+#     0c: number
+#   (beware as they don't need to be 32-bit aligned)
+# - keep going backwards until list2 starts (no more entries in that format)
+# - then there is other list1 that is mostly 0s, that can be in 2 formats
+# - go backwards until list1 starts
+#   - list_gg usually starts like: "0C000000 08000000 NNNNNNNN 30000000"
+#   - list_gv usually starts like: "NNNNNNNN NNNNNNNN NNNNNNNN NNNNNNNN 20000000"
+#     (where NN are usually lowish numbers, little endian)
+#   - save the exact starting offset to use later
+# - if you reach lists of strings or other structures like the above, you are past the header
+# - note this list format is used for multiple things to make sure the header you found is for the filelist
+# - if going back fails, try decompiling (IDA/Ghidra/etc) and see offsets near the filenames
+# 
+# Apart from the list decryption needs a base key, but it's usually "(blah).oss" so easy to find
+# - find ".oss" in hex editor, should be first entry
+# - or use strings2.exe and check simple/suspicious strings
+# - or decompile and see decryption calls
+#
+# Now use intidec.py **/* -lb (game exe) -lo (offset to decryption list found above) -k (base key)
+#
+# Do note that the filenames are hashed, but in binary list-bin follow the original order
+# (IOW: use them to make an ordered playlist, ex. */4ddd7369/* = ordered streams)
 
 
 import os, sys, argparse, glob, struct, zlib
@@ -115,6 +124,9 @@ class Cli(object):
             " - Card-en-Ciel Demo\n"
             "   - (list-bin ID) + /RCG.oss: 'main' offset:\n"
             "     * 0x00E3E560 (PC)\n"
+            " - Card-en-Ciel\n"
+            "   - (list-bin ID) + /RCG.oss: 'main' offset:\n"
+            "     * 0x00F09140 (PC)\n"
             "\n"
             "   * after decrypting with list-bin, some files need a second common key\n"
             "     (usually snd90210 and bft90210)\n"
@@ -216,8 +228,8 @@ class Cli(object):
         self.size_excess = 0x08 #regular files are padded by 0x08 of unknown data at the end (some hash?)
 
         start, entry, count = struct.unpack_from("<III", data, offset)
-        if start != 0x0c or entry != 0x08 or count != 3:
-            raise ValueError("unknown list-bin2 format or wrong offset %x" % (offset))
+        #if start != 0x0c or entry != 0x08 or count != 3:
+        #    raise ValueError("unknown list-bin2 format or wrong offset %x" % (offset))
         
         table2_offset, = struct.unpack_from("<I", data, offset + start + 0x08)
         table3_offset, = struct.unpack_from("<I", data, offset + start + 0x10)
@@ -229,8 +241,8 @@ class Cli(object):
         # 0c: hash?
 
         start, entry, items = struct.unpack_from("<III", data, offset)
-        if start != 0x0c or entry != 0x2c:
-            raise ValueError("unknown list-bin2 format or wrong offset %x" % (offset))
+        #if start != 0x0c or entry != 0x2c:
+        #    raise ValueError("unknown list-bin2 format or wrong offset %x" % (offset))
 
         offset += start + 0x04
         for i in range(items):

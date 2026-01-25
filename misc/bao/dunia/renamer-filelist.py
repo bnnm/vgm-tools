@@ -4,13 +4,19 @@
 import os, sys, argparse, pathlib
 
 AUTOHASH_SOUNDS = True
-AUTOHASH_NUMBER_MIN = 0x00100000
-AUTOHASH_NUMBER_MAX = 0x00800000
-AUTOHASH_ADD_SBAO = True
-AUTOHASH_ADD_BAO = True
+AUTOHASH_CHUNK_SIZE = 0x00500000 #0x01000000 takes ~2.5GB, so partition searches
+AUTOHASH_NUMBER_MIN = 0x80000000
+AUTOHASH_NUMBER_MAX = 0xA0000000
+
+AUTOHASH_ADD_SBAO = False
+AUTOHASH_ADD_BAO = False
 AUTOHASH_ADD_SPK = False
-AUTOHASH_ADD_PREFIX = False #soundbinary\ or not (splinter cell: blacklist)
-AUTOHASH_ADD_EXTRA_HASHES = False #games with implicit ids (far cry)
+AUTOHASH_ADD_PK = True
+AUTOHASH_ADD_PREFIX_BAO = False #soundbinary\ or not (splinter cell: blacklist)
+AUTOHASH_ADD_PREFIX_PK = True #packages\ or not (POP Trilogy)
+AUTOHASH_ADD_PREFIX_OX = False
+AUTOHASH_ADD_EXTRA_HASHES_FC = False #games with implicit ids (far cry)
+AUTOHASH_ADD_EXTRA_HASHES_V1 = False #older games with implicit ids (AC1, Lost Via Domus)
 
 
 CRC32_TABLE = [
@@ -177,70 +183,9 @@ def hash_string(s: str, is_hash64) -> str:
     else:
         return crc32_string(s)
 
-def process():
-    base_path = pathlib.Path(".")
-    hashed_names = {}
-
-    files = base_path.rglob("*")
-    for f in files:
-        fn_len = len(f.name)
-        if fn_len in (8, 16):
-            is_hash64 = fn_len == 16
-            is_upper = f.stem.isupper()
-            #break
-
-    print(f"reading filelist... (hash64={is_hash64}, upper={is_upper})")
-
-    # hash names from filelist(s)
-    for filelist in base_path.glob("*.filelist"):
-        with filelist.open("r", encoding="utf-8") as f:
-            for line in f:
-                original_name = line.strip()
-                if not original_name or original_name.startswith('#'):
-                    continue
-                hashed = hash_string(original_name, is_hash64)
-                if is_upper:
-                    hashed = hashed.upper()
-                hashed_names[hashed] = original_name
-
-
-    # add precalculated
-    if AUTOHASH_SOUNDS and not hashed_names:
-        print(f"autohashing names... (hash64={is_hash64}, upper={is_upper})")
-
-        exts = []
-        if AUTOHASH_ADD_SBAO:
-            exts += ['sbao']
-        if AUTOHASH_ADD_SPK:
-            exts += ['spk']
-        if AUTOHASH_ADD_BAO:
-            exts += ['bao']
-
-        prefix = ''
-        if AUTOHASH_ADD_PREFIX:
-            prefix = "soundbinary\\"
-        for i in range(AUTOHASH_NUMBER_MIN, AUTOHASH_NUMBER_MAX):
-            for ext in exts:
-                calc_name = f"{prefix}{i:08x}.{ext}"
-                hashed = hash_string(calc_name, is_hash64)
-                if is_upper:
-                    hashed = hashed.upper()
-                hashed_names[hashed] = calc_name
-
-                if AUTOHASH_ADD_EXTRA_HASHES: 
-                    calc_name = f"{prefix}{i + 0x00400000:08x}.{ext}"
-                    hashed = hash_string(calc_name, is_hash64)
-                    if is_upper:
-                        hashed = hashed.upper()
-                    hashed_names[hashed] = calc_name
-
-                    calc_name = f"{prefix}{i + 0x80400000:08x}.{ext}"
-                    hashed = hash_string(calc_name, is_hash64)
-                    if is_upper:
-                        hashed = hashed.upper()
-                    hashed_names[hashed] = calc_name
-
-
+def rename_files(base_path, hashed_names):
+    if not hashed_names:
+        return
     print(f"finding matches...")
 
     # rename matching files
@@ -261,6 +206,95 @@ def process():
 
         file.rename(new_path)
         #print(f"Renamed {file.name} to {new_path.name}")
+
+def calculate_chunk(min, max, is_hash64, is_upper):
+    print(f"autohashing from {min:08x} to {max:08x}...")
+
+    exts = []
+    if AUTOHASH_ADD_SBAO:
+        exts += ['sbao']
+    if AUTOHASH_ADD_SPK:
+        exts += ['spk']
+    if AUTOHASH_ADD_BAO:
+        exts += ['bao']
+    if AUTOHASH_ADD_PK:
+        exts += ['pk']
+
+    prefix = ''
+    if AUTOHASH_ADD_PREFIX_BAO:
+        prefix = "soundbinary\\"
+    if AUTOHASH_ADD_PREFIX_PK:
+        prefix = "packages\\"
+    if AUTOHASH_ADD_PREFIX_OX:
+        prefix += '0x'
+
+    hashed_names = {}
+
+    for i in range(min, max):
+        for ext in exts:
+            calc_name = f"{prefix}{i:08x}.{ext}"
+            hashed = hash_string(calc_name, is_hash64)
+            if is_upper:
+                hashed = hashed.upper()
+            hashed_names[hashed] = calc_name
+
+            extra_adds = []
+            if AUTOHASH_ADD_EXTRA_HASHES_FC: 
+                extra_adds.extend[0x00400000, 0x80400000]
+            if AUTOHASH_ADD_EXTRA_HASHES_V1: 
+                extra_adds.extend[0x10000000, 0x20000000, 0x30000000, 0x50000000]
+            for extra_add in extra_adds:
+                calc_name = f"{prefix}{i + extra_add:08x}.{ext}"
+                hashed = hash_string(calc_name, is_hash64)
+                if is_upper:
+                    hashed = hashed.upper()
+                hashed_names[hashed] = calc_name
+
+    return hashed_names
+
+def process():
+    base_path = pathlib.Path(".")
+
+    files = base_path.rglob("*")
+    for f in files:
+        fn_len = len(f.name)
+        if fn_len in (8, 16):
+            is_hash64 = fn_len == 16
+            is_upper = f.stem.isupper()
+            break
+
+    print(f"reading filelist... (hash64={is_hash64}, upper={is_upper})")
+
+    # hash names from filelist(s)
+    hashed_names = {}
+    for filelist in base_path.glob("*.filelist"):
+        with filelist.open("r", encoding="utf-8") as f:
+            for line in f:
+                original_name = line.strip()
+                if not original_name or original_name.startswith('#'):
+                    continue
+                hashed = hash_string(original_name, is_hash64)
+                if is_upper:
+                    hashed = hashed.upper()
+                hashed_names[hashed] = original_name
+
+    rename_files(base_path, hashed_names)
+        
+    # add precalculated
+    if AUTOHASH_SOUNDS and not hashed_names:
+        
+        print(f"autohashing names... (hash64={is_hash64}, upper={is_upper})")
+
+        chunk_size = AUTOHASH_CHUNK_SIZE
+        total_min = AUTOHASH_NUMBER_MIN
+        total_max = AUTOHASH_NUMBER_MAX
+
+        for step_min in range(total_min, total_max, chunk_size):
+            step_max = min(step_min + chunk_size, total_max)
+
+            hashed_names = calculate_chunk(step_min, step_max, is_hash64, is_upper)
+            rename_files(base_path, hashed_names)
+
 
 
 if __name__ == "__main__":

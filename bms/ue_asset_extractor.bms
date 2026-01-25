@@ -5,10 +5,16 @@
 
 ######################
 
+math FORCE_NON_CHUNKED = 0
 math IS_CHUNKED = 0
 math RIP_OK = 0
 
-callfunction SETUP_FILES 1
+if FORCE_NON_CHUNKED == 1
+    math IS_CHUNKED = 0
+else
+    callfunction SETUP_FILES 1
+endif
+
 callfunction EXTRACT_ASSETS 1
 
 # sometimes ubulk/uexp has the whole asset, try again non-chunked

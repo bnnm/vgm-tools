@@ -1,6 +1,6 @@
 # Moves unused 3*.bao/5*.bao files so a subfolder
 # Use after removing 2*.bao (header)
-# Only for .bao from Beowulf.
+# Only for .bao from early versions.
 
 import os, struct, shutil, glob
 
@@ -34,7 +34,7 @@ def extract_external_ids(f):
     external_ids = set()
     bao_id = get_u32be(f)
 
-    if bao_id & 0x00FF0000 != 0x001B0000:
+    if bao_id & 0x00FF0000 >= 0x001D0000:
         print("unknown version")
         return external_ids
 
