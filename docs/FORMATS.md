@@ -109,6 +109,7 @@ Overall wwise games are a pain to rip not just because of this, but rather due t
 
 Sometimes wem/bnk are inside .pck, see https://github.com/bnnm/wwiser-utils for .bms to extract them.
 
+
 ## UBISOFT MAP/SB (.SM0+SS0, .SB0+SS0, .SM1+SS0, .SB1+SS1, ...)
 This is a database-like format. Open .SM0/SB0 (header) in vgmstream and it should automatically load audio from .SS0 if needed.
 
@@ -157,12 +158,43 @@ Help with mixing, this script by Nicknine can read .MPF info for v1 and v5 versi
 However most games usually do very simple mixes like segments 1~10 = track 1, 11~20 = track 2 and so on, so you can make .TXTP manually fairly easily.
 
 
-## VIDEO FILES
-VGMToolbox can split many types of videos
+## CD XA / STR
+XA from PS1 and CD-i games work a bit differently in that they need extra info from CD sectors.
 
-FFmpeg as well with the `-acodec copy` option: `for %%x in (*.mp4) do  ffmpeg.exe -i %%x -vn -acodec copy %%x.m4a`
+This means to extract them you need .bin+cue, then open the iso with a ISO tool, and extract files as "raw " files.
+
+In VGMToolbox (Extraction Tools > Generic > ISO/Archive Extractor) XA files are highlighted in green. Right click + extract as raw. Those are usually playable as-is in vgmstream. 
+
+For .str video can be extracted as well but see below about how to split them.
+
+Saturn/PS2 games rarely may use .xa too, but they are non-raw, which need .txth with `codec = XA`
+
+
+## VIDEO FILES
+
+VGMToolbox can split many types of videos: Stream Tools > Video Demultiplexer + select format and check "Extract audio only". Main formats: .bik, .mo, .pss, .pmf, .sfd, thp, .usm
+
+For PS1 videos with XA audio (.str), first extract them as raw (see above), then use VGMToolbox's Extraction Tools > Streams > CD-XA Extractor, AND uncheck all checkboxes (they were only needed by ancient players).
+
+FFmpeg as well with the `-acodec copy` option: `for %%x in (*.mp4) do  ffmpeg.exe -i %%x -vn -acodec copy %%x.m4a`. You need to select the proper extension. FFmpeg should the audio track type, and tools like VideoLAN can do it too. Typically
+- .mp4 > .m4a (don't use .aac)
+- .wmv > .wma
+- .webm > .ogg
+- etc
 
 For odd cases there are .bms scripts too: https://github.com/bnnm/vgm-tools/tree/master/bms/demux
+https://github.com/bnnm/vgm-tools/tree/master/bms/etc
+- .vp6/mad (EA's videos)
+- .smk
+- .ips/.ipf
+- .vid1
+- etc
+
+Other formats or cases may need specialized tools:
+- .h4m: https://github.com/bnnm/vgm-tools/tree/master/misc/h4m_audio_decode
+- .usm: https://github.com/bnnm/vgm-tools/tree/master/misc/crid-mod
+- .bik: https://github.com/bnnm/vgm-tools/tree/master/misc/bik_demux (for newer versions)
+- .moflex: https://github.com/bnnm/vgm-tools/blob/master/py/mobiclip/demoflex.py
 
 
 ## TXTH
