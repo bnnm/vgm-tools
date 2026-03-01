@@ -109,6 +109,18 @@ Overall wwise games are a pain to rip not just because of this, but rather due t
 
 Sometimes wem/bnk are inside .pck, see https://github.com/bnnm/wwiser-utils for .bms to extract them.
 
+#### Extracting Wwise audio
+Do not use "wav scanners" like RavioliGameTools or similar tools. These will give you broken files due to how Wwise works (see prefetch info [here](https://github.com/vgmstream/vgmstream/blob/master/doc/USAGE.md#prefetch-truncated-files))
+
+Instead you need to find `.bnk`, `.wem` and `.pck`. `.pck` can be extracted with this Quickbms script to get more `.bnk` and `.wem`: https://github.com/bnnm/wwiser-utils/blob/master/scripts/wwise_pck_extractor.bms
+
+Then you can use [wwiser](https://github.com/bnnm/wwiser) as explained above.
+
+Some games put `.wem`/`.bnk`/`.pck` inside other files. For example
+- Unreal Engine games pack `.bnk` and `.wem` inside. These are often standard but also use rather complex behaviors in later versions (may need to update FModel).
+- Some Unity games have `.wem` packed inside MonoBehavior. You can use [this script](https://github.com/bnnm/vgm-tools/blob/master/py/unpack-wem-bnk-monobehavior.py) but you may need to modify it depending on your unity version
+- Capcom's games using the RE Engine use `.spck.1.x64` = `.pck` and `.sbnk.1.x64` = `.bnk` instead, but they are standard otherwise.
+
 
 ## UBISOFT MAP/SB (.SM0+SS0, .SB0+SS0, .SM1+SS0, .SB1+SS1, ...)
 This is a database-like format. Open .SM0/SB0 (header) in vgmstream and it should automatically load audio from .SS0 if needed.
