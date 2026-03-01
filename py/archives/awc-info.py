@@ -23,6 +23,14 @@ class AwcParser():
         self._depth = 0
         self._pos = 0
         self._is_be = False
+
+        self._streamed = False
+        self._stream_codec = 0
+        self._data_start = 0
+        self._channels = 0
+        self._block_count = 0
+        self._block_chunk = 0
+        
     
     def add(self, text):
         indent = self._depth * 2 * ' '
@@ -72,6 +80,9 @@ class AwcParser():
 
     def u8(self):
         return self._unpack('B', 1)
+        
+    def size(self):
+        return len(self.data)
 
     def pos(self, val=None):
         if val is not None:
@@ -87,6 +98,8 @@ class AwcParser():
         
         if   type == 0x55:
             self.add("Data")
+
+            self._data_start = offset
         
         elif type == 0x48:
             self.add("MusicHeader").next()
@@ -97,6 +110,10 @@ class AwcParser():
             self.add("block_count: %i" % (block_count))
             self.add("block_chunk: 0x%08x" % (block_chunk))
             self.add("channels: %i" % (channels))
+            
+            self._block_count = block_count
+            self._block_chunk = block_chunk
+            self._channels = channels
         
             self.next()
             for ch in range(channels):
@@ -118,6 +135,8 @@ class AwcParser():
                 self.add("round_size_: %02x" % (round_size_))
                 self.add("unknown2: %i" % (unknown2))
                 self.prev()
+                
+                self._stream_codec = codec #same for all streams
             self.prev()
         
             self.prev()
@@ -197,11 +216,11 @@ class AwcParser():
 
         elif type == 0xA3:
             self.add("SeekTable").next()
-            
+
             if is_seek_samples:
                 blocks = size // 4
                 for i in range(blocks):
-                    samples = self.u32()
+                    samples = self.s32()
                     self.add("block %i sample start: %i" % (i, samples))
             else:
                 frames = size // 2
@@ -252,7 +271,7 @@ class AwcParser():
         self.prev()
         self.pos(pos) #restore
 
-    def parse(self):
+    def parse_header(self):
         self.add(f'{self.file}').next()
 
         id = self.fourcc();
@@ -301,12 +320,16 @@ class AwcParser():
             stream_id = (info_header >>  0) & 0x1FFFFFFF #29b
             stream_infos[i] = (stream_id, tag_count)
             self.add('Stream %08x: %i tags' % (stream_id, tag_count))
+            
+            if stream_id == 0x00000000:
+                self._streamed = True
         self.prev().add('')
 
         self.add("TagInfo").next()
         for i in range(entries):
             stream_id, tag_count = stream_infos[i]
             self.add('Stream %04i: %08x' % (i,stream_id)).next()
+            
             
             #just checking (stream_id == 0) is not incorrect, some streams non-0 stream have a block seektable + musicheader (in that order)
             is_seek_samples = True 
@@ -332,6 +355,75 @@ class AwcParser():
 
         self.prev().add('')
 
+    def parse_blocks(self):
+        if not self._streamed or not self._data_start:
+            return
+            
+        self.pos(self._data_start) #save
+        
+        self.add("StreamedBlocks").next()
+
+        data_size = self.size()
+        block_offset = self._data_start
+        for i in range(self._block_count):
+            self.pos(block_offset)
+            offset = block_offset
+
+            block_chunk = self._block_chunk
+            if block_chunk + offset > data_size: #not sure if possible
+                block_chunk = data_size - offset
+
+            self.add('Block: num=%04i, offset=%08x, size=%08x' % (i, offset, block_chunk)).next()
+
+            # entries
+            channel_entries = [0] * self._channels
+            for ch in range(self._channels):
+                start = self.s32()
+                entries = self.s32()
+                skip = self.s32()
+                samples = self.s32()
+
+                if self._stream_codec == 0x07:
+                    frames = self.s32()
+                    size = self.u32()
+                    self.add(f"ch={ch:02d}, start={start:04d}, entries={entries:04d}, skip={skip:06d}, samples={samples:08d}, frames={frames:08d}, size={size:08x}")
+                else:
+                    self.add(f"ch={ch:02d}, start={start:04d}, entries={entries:04d}, skip={skip:06d}, samples={samples:08d}")
+
+                channel_entries[ch] = entries
+
+            # seek table
+            for ch in range(self._channels):
+                for i in range(channel_entries[ch]):
+                    self.s32()
+            
+            offset = self.pos()
+
+            # extra data
+            if self._stream_codec in [0x0D, 0x0F]:
+                offset += 0x70
+                self.pos(offset)
+
+            header_size = offset - block_offset
+
+            # block padding
+            if self._stream_codec in [0x05, 0x07, 0x08]:
+                extra_size = header_size % 0x800;
+                if extra_size:
+                    header_size += 0x800 - extra_size
+                self.pos(block_offset + header_size)
+                offset = self.pos()
+            
+            self.add(f'header={header_size:08x}, data at {offset:08x}')
+
+            self.prev().add('')
+            block_offset += block_chunk
+
+        self.prev().add('')
+
+    def parse(self):
+        self.parse_header()
+        self.parse_blocks()
 
     def print(self):
         for line in self.lines:
