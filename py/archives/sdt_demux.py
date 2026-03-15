@@ -45,7 +45,7 @@ extension_map = {
 	0x00040001: "xwma",     # MGS3 HD (X360)
 	0x00050001: "9tav",     # MGS3 HD (Vita)
     0x00100001: "vag",      # MGS3 VAG1/VAG2 (PS2/PS3)
-    0x00110001: "mtaf",     # MGS3 (PS2/PS3)
+    0x00110001: "mta",      # MGS3 (PS2/PS3)
 
     0x00000002: "dmx",      # MGS4, MGS3 HD, ZOE HD
     0x00010002: "dmx_1",    # MGS3 HD
@@ -93,7 +93,7 @@ extension_map = {
 }
 
 #header_id_map = {
-#    "MTAF": "mtaf",
+#    "MTAF": "mta",
 #    "MTA2": "mta2",
 #    "OggS": "ogg",
 #    "9TAV": "9tav",
