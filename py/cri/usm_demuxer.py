@@ -667,7 +667,7 @@ class CriDemuxer():
                     break
 
             if not self._writers:
-                print(f"{base_name}: nothing to demux")
+                print(f"{f.name}: nothing to demux")
                 return
         finally:
             # TODO: delete on error?
