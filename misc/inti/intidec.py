@@ -1,52 +1,56 @@
-# decrypts Inti Creates engine files
+# Decrypts Inti Creates's ICE engine files.
 #
 # Usage (older games)
 #   intidec.py *.bigrp -k (game key)
 #
 # Usage (newer games):
-#   intidec.py **/* -lb (game exe) -lo (offset to decryption list inside exe) -k (game key)
+#   intidec.py Data/**/* -lb (game exe) -a
+# (for switch games game exe is 'main' and must be decompressed with nsnsotool or such)
+#
+# If the above fails to autodetect (or throws many decryption errors), read huge comment below and try again:
+#   intidec.py Data/**/* -lb (game exe) -lo (offset to decryption list inside exe) -k (game key)
 #
 # ---
 #
-# some info inti_encdec tool: https://forum.xentax.com/viewtopic.php?f=32&t=23816
-# this script is similar to the above tool but this allows using free keys 
-# and supports file table decryption used in the latest games
+# To rename files with hashed folders/names (Data/c4f76749/85b3c32d/...) use inti-renamer.py + names.txt
 #
-# for long hashes hash-renamer.py + filelists in 
-# for short filenames, hash is unknown but names are previsible and c4f76749, 
-# 85b3c32d/b845e4c2, 4ddd7369 seem to be the "sound"/"group"/"stream"/etc folders
+# Some info from inti_encdec: https://forum.xentax.com/viewtopic.php?f=32&t=23816
 #
 # ---
 #
-# HOW TO FIND OFFSET TO BINARY LIST INSIDE THE EXE NEEDED TO DECRYPT NEWER GAMES (A.K.A LIST-BIN)
-# - newer games have a giant filename<>id list that is used to decrypt files
-# - we need to locate the real start of this list so it can be used to decrypt
-# - the list is basically a binary minidatabase embedded in the exe (it's referred internally as a type of 'list')
+# HOW TO FIND OFFSET TO DECRYPTION LIST INSIDE EXE (A.K.A LIST-BIN)
+# - newer games have a giant filename<>id list + key that is used to decrypt files
+# - the list is a binary minidatabase inside the exe (internally called a type of 'list')
+# - we need to locate the start of this list, so it can be used to decrypt
 # - currently there are 2 list formats but they should be autodetected
-# - it's useful to look at previous games' exes list first (offset listed in the help below) so you know it looks
 #
-# Tips to find the list starting offset (needs a hex editor):
-# - use hex editor's "find" to look for "Common/" string, or a similar dir name/file (the list has "path/file" strings)
-#   - from that point we need to move backwards until we fin the list1's start
-# - now find *backwards* hex integer FFFFFFFF, this should find list2's last entry
+# Known offsets + keys: intidec.py -h
+# Or try autodetect: intidec.py -ab (game exe)
+#
+# If that fails the list can be found manually fairly easily (needs a hex editor):
+# - it's useful to look at known games' exes list + offsets (intidec.py -h) so you know it looks
+# - list-bin is made of: table0 + table1 + table2 + file-paths
+# - use hex editor's "find" to look for "Common/" string, or a similar dir name/file (file-paths)
+#   - exes may include list-bin tables for other platforms
+# - now find *backwards* hex integer FFFFFFFF, this should be table2's last entry
 # - scrolling upwards there should be a long list of 0x10 entries in this format:
 #     00: hash/id
-#     04: number or FFFFFFFF 
-#     08: FFFFFFFF
+#     04: low number or FFFFFFFF
+#     08: low number or FFFFFFFF
 #     0c: number
 #   (beware as they don't need to be 32-bit aligned)
-# - keep going backwards until list2 starts (no more entries in that format)
-# - then there is other list1 that is mostly 0s, that can be in 2 formats
-# - go backwards until list1 starts
-#   - list_gg usually starts like: "0C000000 08000000 NNNNNNNN 30000000"
-#   - list_gv usually starts like: "NNNNNNNN NNNNNNNN NNNNNNNN NNNNNNNN 20000000"
+# - keep going backwards until table2 starts (no more entries in that format)
+# - then there is other table1 that is mostly 0s, that can be in 2 formats
+# - go backwards until table1 starts, then also table0 right before it:
+#   - list_gg usually starts like: "0C000000 08000000 NNNNNNNN NN000000" (NN000000 is a sub-offset to table1)
+#   - list_gv usually starts like: "NNNNNNNN 20000000 NNNNNNNN NNNNNNNN"
 #     (where NN are usually lowish numbers, little endian)
 #   - save the exact starting offset to use later
 # - if you reach lists of strings or other structures like the above, you are past the header
-# - note this list format is used for multiple things to make sure the header you found is for the filelist
+# - note this list format is used for multiple things so make sure offset you found is for the filelist
 # - if going back fails, try decompiling (IDA/Ghidra/etc) and see offsets near the filenames
 # 
-# Apart from the list decryption needs a base key, but it's usually "(blah).oss" so easy to find
+# Apart from the list decryption needs a base key, but it's usually "(game-id).oss" so easy to find
 # - find ".oss" in hex editor, should be first entry
 # - or use strings2.exe and check simple/suspicious strings
 # - or decompile and see decryption calls
@@ -57,91 +61,22 @@
 # (IOW: use them to make an ordered playlist, ex. */4ddd7369/* = ordered streams)
 
 
-import os, sys, argparse, glob, struct, zlib
+import os, sys, argparse, glob, struct, zlib, pathlib, re
 
-class Cli(object):
-    def __init__(self):
+DEFAULT_EXTENSION = 'bin'
+IGNORED_EXTENSIONS = ['.py','.exe','.bat','.sh', '.tar','.zip','.7z']
+IGNORED_FILES = ['main']
+
+#class IgnoredError(Exception):
+#    pass
+
+class Decryptor(object):
+
+    def __init__(self, args):
         self.list_map = {} #path > list of id
         self.list_map_file = {} #basename > list of id
-        self.curr_file = None
         self.size_excess = 0
-        pass
-
-    def parse(self):
-        description = (
-            "decrypts Inti Creates files\nSome files are double-encrypted and need multiple passes, see below for known cases"
-        )
-
-        # some known keys from inti_encdec tool (recent games only use snd* and obj* plus list-bin)
-        epilog = (
-            "examples (files not always encrypted):\n"
-            "%(prog)s *.bigrp -k snd90270\n"
-            "- get all files that start with bgm_ and end with .ogg\n"
-            "%(prog)s ./Data/**/* -lb game.exe -lo 0x10AE030 -k BSM3.oss \n"
-            "- decrypts latest games based on ID per file on exe + extra key\n"
-            "  (some files need a second pass)"
-
-            "\nKnown keys:\n"
-            " (2 keys listed means 2 passes with each key)\n"
-            " (list-bin ID is an internal ID from that list;\n"
-            "  you need to pass the offset to said list and the suffix key)\n"
-            " - Common\n"
-            "   - snd90210: *.bisar, *.bigrp (not compressed)\n"
-            "   - obj90210: *.osb files (usually compressed)\n"
-            "   - bft90210: *.bfb files (sometimes compressed)\n"
-            "   - set90210: *.stb (not compressed)\n"
-            "   - scroll90210: *.scb (usually compressed)\n"
-            "   - txt20170401: *.ttb (compressed)\n"
-            "   - x4NKvf3U: *.tb2 (compressed)\n"
-            "   - ssbpi90210: ?\n"
-            " - Bloodstained COTM1/2\n"
-            "   - gYjkJoTX / zZ2c9VTK: system/saves? (offset 0x10)\n"
-            "   - gVTYZ2jk / JoTXzc9K: system/saves? (offset 0x10)\n"
-            " - Dragon Marked for Death\n"
-            "   - gVTYZ2jk + (playerID) / JoTXzc9K + (playerID): saves?\n"
-            " - Gal Gun Returns (PC)\n"
-            "   - (list-bin ID) + /GGR.oss: 'game.exe' offset:\n"
-            "     * 0x9CDAD0 (PC)\n"
-            " - Luminous Avenger iX 2 (PC)\n"
-            "   - (list-bin ID) + /gva2.oss: 'game.exe' offset:\n"
-            "     * 0x14A18B0 (PC)\n"
-            "   - gva2encrypt_key_01 / gva2encrypt_key_02: saves? (offset ?)\n"
-            " - Blaster Master Zero 3\n"
-            "   - (list-bin ID) + /BSM3.oss: 'game.exe' offset:\n"
-            "     * 0x10AE030 (PC)\n"
-            "   - r8Z5Zrn5 / mn7FuW57: saves? (offset 0x10)\n"
-            "   - mn7FuW57 / r8Z5Zrn5: saves? (offset 0x10)\n"
-            " - Gunvolt 3\n"
-            "   - (list-bin ID) + /GV3.oss: 'main' offset:\n"
-            "     * 0x17CB879 (Switch) [after decompression]\n"
-            "   - gv3encrypt_key_01 / gv3encrypt_key_02: saves? (offset 0x400)\n"
-            " - Grim Guardians / Gal Guardians\n"
-            "   - (list-bin ID) + /ggac.oss: 'main' offset:\n"
-            "     * 0x11F538C (Switch) [after decompression]\n"
-            " - YOHANE THE PARHELION -BLAZE in the DEEPBLUE- Demo\n"
-            "   - (list-bin ID) + /yhn.oss: 'main' offset:\n"
-            "     * 0x008EE260 (PC)\n"
-            " - Card-en-Ciel Demo\n"
-            "   - (list-bin ID) + /RCG.oss: 'main' offset:\n"
-            "     * 0x00E3E560 (PC)\n"
-            " - Card-en-Ciel\n"
-            "   - (list-bin ID) + /RCG.oss: 'main' offset:\n"
-            "     * 0x00F09140 (PC)\n"
-            "\n"
-            "   * after decrypting with list-bin, some files need a second common key\n"
-            "     (usually snd90210 and bft90210)\n"
-            "   * exes may include list-bin tables for other platforms"
-        )
-
-        p = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
-        p.add_argument("files", help="files to match (accepts wildcards)", nargs="+")
-        p.add_argument("-k","--key", help="key to use")
-        p.add_argument("-o","--offset", help="offset to use", )
-        p.add_argument("-lb","--list-bin", help="decryption file table binary (combined with key)")
-        p.add_argument("-lo","--list-offset", help="decryption file table offset")
-        p.add_argument("-z","--zip", help="decompress files", action="store_true")
-        p.add_argument("-ni","--name-id", help="adds id to name for list-bin files", action="store_true")
-        self.args = p.parse_args()
+        self.args = args
 
     def get_cstring_size(self, data, offset):
         size = 0
@@ -287,6 +222,7 @@ class Cli(object):
 
     def parse_list(self):
         if not self.args.list_bin:
+            # earlier files don't have list-bin
             return
 
         with open(self.args.list_bin, 'rb') as f:
@@ -295,40 +231,72 @@ class Cli(object):
         offset = 0
         if self.args.list_offset:
             offset = int(self.args.list_offset, 0)
-        
+
         # these tables are reused for varios things but we need the id/path table
         test00, test04, test08, test0c = struct.unpack_from("<IIII", data, offset + 0x00)
         if test04 == 0x20:
             self.parse_list_gv(data, offset)
-        elif test00 == 0x0c and test04 == 0x08 and test0c == 0x30:
+        elif test00 == 0x0c and test04 == 0x08 and test0c >= 0x30 and test0c <= 0x100: #0x30: common, 0x40: GV Trilogy
             self.parse_list_gg(data, offset)
         else:
             raise ValueError("unknown table format")
 
-    def get_ids(self):
-        if not self.args.list_bin:
-            return
-    
-        file = self.curr_file
-        file = os.path.realpath(file)
-        file = file.replace('\\', '/')
-        basename = os.path.basename(file)
 
-        ids = None
+    def hash_string(self, bstr):
+        hash = 0xCDE723A5
+        for i in range(len(bstr)):
+            temp = (hash + bstr[i]) & 0xffffffff
+            hash = (141 * temp) & 0xffffffff
+
+        return format(hash, "08x")
+
+    # convert blah/blah.
+    def hash_filepath(self, file):
+        parts = []
+
+        for part in file.split('/'):
+            if not bool(re.fullmatch(r"[0-9a-f]{8}", part)):
+                bstr = part.encode('utf-8')
+                part = self.hash_string(bstr)
+            parts.append(part)
+        return '/'.join(parts)
+
+    def _get_ids_fullname(self, file):
         for path in self.list_map.keys():
             if file.endswith(path):
-                ids = self.list_map[path]
-                break
+                return self.list_map[path]
+        return None
 
-        if not ids:
-            if basename in self.list_map_file:
-                ids = self.list_map_file[basename]
-        if not ids:
-            raise ValueError("list-bin id not found")
+    def _get_ids_basename(self, file):
+        basename = os.path.basename(file)
+        if basename in self.list_map_file:
+            return self.list_map_file[basename]
+        return None
 
-        return ids
+    # try to find ids associated to current file (1 id for single files or N for packs).
+    # exe has exact paths to file, but for flexibility try different formats
+    # since file may be moved, try to find 
+    def get_ids(self, file):
+        if not self.args.list_bin:
+            return None
+
+        #file = os.path.realpath(file)
+        file = file.replace('\\', '/')
+        hash = self.hash_filepath(file)
+        for item in [file, hash]:
+            ids = self._get_ids_fullname(item)
+            if ids:
+                return ids
         
-    def get_string_key(self):
+            ids = self._get_ids_basename(item)
+            if ids:
+                return ids
+        
+        #if len(basename) != 8 and '.' in basename:
+        #    raise IgnoredError("file may not be encrypted")
+        raise ValueError("list-bin id not found")
+
+    def get_string_key(self, curr_id):
         # external key (varies per file type)
         # key could be reused for N files if list_bin isn't used but og code does redo it every time anyway
         key = self.args.key
@@ -336,11 +304,10 @@ class Cli(object):
         # in some games files are pre-encrypted per file using an internal ID,
         # and have table in the exe with id<>file name. find this ID based on the filename.
         # (after decrypting like this files need a second decryption with a standard key)
-        if self.curr_id:
+        if curr_id:
             if key[0] == '/':
                 key = key[1:]
-            key = "%08x/%s" % (self.curr_id, key)
-            #print(key)
+            key = "%08x/%s" % (curr_id, key)
 
         return key
 
@@ -354,16 +321,16 @@ class Cli(object):
         return key
 
 
-    def decrypt(self, data):
-        str_key = self.get_string_key()
+    def decrypt(self, data, curr_id):
+        str_key = self.get_string_key(curr_id)
         if not str_key:
             return False
 
         key = self.get_base_key(str_key)
 
         start = 0
-        if self.args.offset:
-            start = int(self.args.offset, 0)
+        if self.args.decryption_offset:
+            start = int(self.args.decryption_offset, 0)
 
         for i in range(start, len(data)):
             val = data[i];
@@ -391,10 +358,10 @@ class Cli(object):
                 return None
             return udata
         except:
-            #print("can't zlib", e)
+            #print("can't zlib")
             return None
 
-    def is_bigrp(self, data):
+    def _is_bigrp(self, data):
         header_size, = struct.unpack_from("<I", data, 0x00)
         entry_size, = struct.unpack_from("<I", data, 0x04)
         subsongs, = struct.unpack_from("<I", data, 0x08)
@@ -420,56 +387,82 @@ class Cli(object):
         
 
     def autodetect_ext(self, data):
-        if self.is_bigrp(data):
+        if self._is_bigrp(data):
             return "bigrp"
         return None
 
-    def process_subfile(self, data):
-    
-        done = self.decrypt(data)
+    def process_subfile(self, data, file, curr_id, curr_index):
+
+        done = self.decrypt(data, curr_id)
         if not done:
             raise ValueError("couldn't decrypt (no key?):")
-
 
         data_unzip = self.decompress(data)
         if data_unzip:
             data = data_unzip
 
         
-        file = self.curr_file
-        file_ext = os.path.splitext(file)[1]
+        base_ext = os.path.splitext(file)[1]
         base_name = os.path.basename(file)
         base_path = os.path.dirname(file)
         if not base_path:
             base_path = '.'
 
+        # detect decrypting subfiles already renamed, like GROUP_COMMON.sndGrp
+        file_ext = base_ext
+        if curr_index is not None:
+            file_ext = None
 
         out_ext = None
         if not file_ext:
             out_ext = self.autodetect_ext(data)
         if not out_ext:
-            out_ext = "dec"
+            out_ext = DEFAULT_EXTENSION
         
-        if self.curr_id:
-            if self.curr_index is not None:
-                if self.args.name_id:
-                    file_out = "%s_%03i_%08x.%s" % (file, self.curr_index, self.curr_id, out_ext)
+        if curr_id:
+            # Newer method with decryption ID, which is the hash of a full path.
+            # Add it to filename in certain cases, as it can be used to reverse/rename later:
+            show_id = False
+            if curr_index is not None:
+                show_id = True # file is a pack, and the ID contains the internal filename
+            if self.args.no_name_id:
+                show_id = False
+
+            # the double __ for subfiles is meant to make renaming a bit easier
+            if curr_index is not None:
+                if show_id:
+                    file_out = "%s__%04i~%08x.%s" % (file, curr_index, curr_id, out_ext)
                 else:
-                    file_out = "%s_%03i.%s" % (file, self.curr_index, out_ext)
+                    file_out = "%s__%04i.%s" % (file, curr_index, out_ext)
             else:
-                if self.args.name_id:
-                    file_out = "%s_%08x.%s" % (file, self.curr_id, out_ext)
+                if show_id:
+                    file_out = "%s~%08x.%s" % (file, curr_id, out_ext)
                 else:
                     file_out = "%s.%s" % (file, out_ext)
         else:
-            file_out = "%s.%s" % (file, out_ext)
+            if base_ext:
+                # for simple files/keys with an extension
+                file_out = "%s" % (file)
+            else:
+                file_out = "%s.%s" % (file, out_ext)
 
+        if curr_index is not None:
+            print('pack: %s' % file_out)
+
+        # could avoid decrypting/decompressing but woulnd't detect extension
+        if self.args.list:
+            return
+
+        if self.args.dir:
+            file_out = self.args.dir + '/' + file_out
+            path = pathlib.Path(file_out)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            
         with open(file_out, 'wb') as f:
             f.write(data)
 
 
-    def process_file(self):
-        file = self.curr_file
+    def process_file(self, file):
         if not os.path.isfile(file):
             #print("not a file: " + file)
             return
@@ -477,63 +470,285 @@ class Cli(object):
         with open(file, 'rb') as f:
             data = bytearray(f.read())
 
-        self.curr_id = None
-        items = self.get_ids()
+        # find id(s) associated to current file (different than the filename).
+        # Packs have N ids per subfile, which is the full hashed path including the subfile
+        # pack's subfile id: SoundAssets_QON_GROUP_COMMON_sndGrp_QON_JGL_GAMEOVER_bigrp
+        # path: SoundAssets/QON_GROUP_COMMON.sndGrp + QON_JGL_GAMEOVER.bigrp
+
+        items = self.get_ids(file)
         if items:
+            # list-bin decryption
             for i, item in enumerate(items):
                 id, offset, size = item
                 
                 if not size: #dir?
                     continue
 
-                self.curr_id = id
-                self.curr_index = i
+                curr_id = id 
+                curr_index = i #subfile index
                 if len(items) == 1:
                     if size != len(data) and size + self.size_excess != len(data):
                         #size = len(data)
                         raise ValueError("expected size doesn't match file size (exp=%x, len=%x)" % (size, len(data)))
-                    self.curr_index = None
+                    curr_index = None
 
                 subdata = data[offset : offset + size]
-                self.process_subfile(subdata)
+                self.process_subfile(subdata, file, curr_id, curr_index)
         else:
-            self.process_subfile(data)
+            # regular decryption
+            self.process_subfile(data, file, None, None)
 
         print("done:", file)
 
-    def main(self): 
-        self.parse()
-        if not self.args:
+
+class Autodetector(object):
+    def __init__(self, args):
+        self.args = args
+
+    def _find_list(self, data):
+        MINUS = b'\xFF\xFF\xFF\xFF'
+
+
+        # find filelist
+        index = data.find(b'Common/')
+        if index <= 0:
+            return
+        filelist_end = index
+        #print("filelist: %08x " % (filelist_end))
+
+        # find table2's end
+        index = data.rfind(MINUS, 0, index)
+        if index <= 0:
             return
 
-        # target files
-        files = []
-        for file in self.args.files:
-            files += glob.glob(file, recursive=True)
+        # align to table2's entry
+        offset = index - 0x08
+        if data[offset - 0x04 : offset] == MINUS:
+            offset -= 0x04
+        table2_end = offset + 0x10
 
-        if not files:
-            print("no valid files found")
+        # find table2's start, knowing that entries always look like this:
+        #  00: hash/id
+        #  04: low number or FFFFFFFF
+        #  08: low number or FFFFFFFF
+        #  0c: number
+        max_low = 0x10 # GV3 uses ~0x09
+        while offset > 0:
+            hash, num1, num2, pos = struct.unpack_from("<IiiI", data, offset)
+
+            if num1 > max_low or num2 > max_low or num1 == 0 and num2 == 0 and pos == 0:
+                break
+            offset -= 0x10
+
+        if offset == 0:
             return
 
-        # file decryption
-        if not self.args.key:
-            print("key not specified")
+        table2_start = offset + 0x10
+        table2_size = table2_end - table2_start #approximate
+        #print("table2: %08x > %08x (~%08x)" % (table2_start, table2_end, table2_size))
+
+        # find table1's start, knowing that entries always look like this:
+        # #TODO: may not work with list_gv
+        # 00: low number (starts with 0x0C)
+        # 04: offset?
+        # 08: low number
+        # 0c: offset?
+        max_low1 = 0x100
+        max_low2 = 0x1000
+        max_offset = 0xFFFFFF
+        offset = table2_start - 0x100 # approximate
+        while offset > 0:
+            num1, offset1, num2, offset2 = struct.unpack_from("<iiii", data, offset)
+
+            if num1 > max_low1 or num2 > max_low2 or offset1 > max_offset or offset2 > max_offset:
+                break
+
+            # some are dummy entries
+            #if num1 == 0 and num2 == 0 and offset1 == 0 and offset1 == 0:
+            #    break
+
+            offset -= 0x10
+
+        if offset == 0:
             return
+        
+        for test_offset in [offset - 0x20, offset - 0x10, offset]:
+        
+            # before table1 there is a mini header, where the offset we need starts
+            test00, test04, test08, test0c = struct.unpack_from("<IIII", data, test_offset)
+            if test00 == 0x0c and test04 == 0x08: # and test0c in (0x30, 0x40): #0x40: GV Trilogy
+                print(f"-lo 0x{test_offset:08x}")
+                return test_offset
 
-        self.parse_list()
+        print(f"-lo (possibly around {offset - 0x20:08x})")
 
-        for file in files:
-            ext = os.path.splitext(file)[1]
-            if ext in ['.py','.exe','.dec','.bat'] or file.endswith('main'):
-            #if file.endswith('.py') or file.endswith('.exe') or file.endswith('.dec') or file.endswith('main'):
-                continue
 
-            self.curr_file = file
+    def _find_key(self, data):
+        suffix = b'.oss'
+
+        end_index = data.find(suffix)
+        index = data.rfind(b'\x00', 0, end_index)
+        if index <= 0:
+            return
             
-            try:
-                self.process_file()
-            except ValueError as e:
-                print("error in %s: %s" % (file, str(e)))
+        key = data[index + 1: end_index + len(suffix)]
+        try:
+            key = key.decode('utf-8')
+            print('-k: ' + key)
+            return key
+        except:
+            return
+            pass
+
+    def process(self):
+        exe = self.args.list_bin
+        if not exe:
+            print('game exe not specified')
+            return
+
+        with open(exe, 'rb') as f:
+            data = f.read()
+
+        offset = self._find_list(data)
+        key = self._find_key(data)
+
+        if offset:
+            self.args.list_offset = '0x%08x' % (offset)
+        else:
+            print("-lb (not found)")
+
+        if key:
+            self.args.key = key
+        else:
+            print("-k (not found)")
+# ---
+
+def parse():
+    description = (
+        "Decrypts Inti Creates's ICE engine files"
+    )
+
+    # some known keys from inti_encdec tool (recent games only use snd* and obj* plus list-bin)
+    epilog = (
+        "Decrypts Inti Creates's ICE engine files.\n"
+        "\n"
+        "Older games need various keys, hardcoded in the exe (see below)\n"
+        "- %(prog)s *.bigrp -k snd90270\n"
+        "\n"
+        "Newer games need a decryption table in the exe\n"
+        "%(prog)s ./Data/**/* -lb game.exe -a\n"
+        "%(prog)s ./Data/**/* -lb game.exe -lo 0x10AE030 -k BSM3.oss \n"
+        "  (some files need a second pass with -k (key) to decrypt after the above)\n"
+        "\n"
+        "Known keys:\n"
+        " - Common\n"
+        "   * -k snd90210 **/*.bisar **/*.bigrp  #not compressed\n"
+        "   * -k obj90210 **/*.osb  #usually compressed\n"
+        "   * -k bft90210 **/*.bfb  #sometimes compressed\n"
+        "   * -k set90210 **/*.stb  #not compressed\n"
+        "   * -k scroll90210 **/*.scb  #usually compressed\n"
+        "   * -k txt20170401 **/*.ttb  #compressed\n"
+        "   * -k x4NKvf3U **/*.tb2   #compressed\n"
+        "   * -k ssbpi90210 #?\n"
+        " - Bloodstained COTM1/2\n"
+        "   * -k gYjkJoTX / zZ2c9VTK -do 0x10  #system/saves?\n"
+        "   * -k gVTYZ2jk / JoTXzc9K -do 0x10  #system/saves?\n"
+        " - Dragon Marked for Death\n"
+        "   * -k gVTYZ2jk + {playerID} / JoTXzc9K + {playerID}  #saves?\n"
+        " - Gal Gun Returns\n"
+        "   * -lb game.exe -lo 0x009CDAD0 -k GGR.oss \n"
+        " - Luminous Avenger iX 2\n"
+        "   * -k gva2encrypt_key_01 / gva2encrypt_key_02 -do 0x10  #saves?\n"
+        "   * -lb game.exe -lo 0x014A18B0 -k gva2.oss \n"
+        " - Blaster Master Zero 3\n"
+        "   * -k r8Z5Zrn5 / mn7FuW57: saves? (-do 0x10)\n"
+        "   * -lb game.exe -lo 0x010AE030 -k BSM3.oss \n"
+        " - Gunvolt 3\n"
+        "   * -k gv3encrypt_key_01 / gv3encrypt_key_02 -do 0x400 #saves?\n"
+        "   * -lb main-dec -lo 0x017CB879 -k GV3.oss \n"
+        " - Grim Guardians / Gal Guardians: Demon Purge\n"
+        "   * -lb main-dec -lo 0x011F538C -k ggac.oss \n"
+        " - Yohane the Parhelion -BLAZE in the DEEPBLUE- Demo\n"
+        "   * -lb game.exe -lo 0x008EE260 -k yhn.oss \n"
+        " - PuzzMix\n"
+        "   * -lb eboot.bin -lo 0x007d19d0 -k RRG.oss Data/**/* \n"
+        " - Umbraclaw\n"
+        "   * -lb game.exe -lo 0x011a9f70 -k QON.oss Data/**/* \n"
+        " - Card-en-Ciel Demo\n"
+        "   * -lb game.exe -lo 0x00E3E560 -k RCG.oss \n"
+        " - Card-en-Ciel\n"
+        "   * -lb game.exe -lo 0x00F09140 -k RCG.oss \n"
+        " - Gal Guardians: Servants of the Dark\n"
+        "   * -lb game.exe -lo 0x01978a20 -k: ggac2.oss \n"
+        " - Gunvolt Trilogy Enhanced\n"
+        "   * -lb game.exe  -lo 0x0040A280 -k GVFSP.oss Data0/**/* \n"
+        "   * -lb game1.exe -lo 0x005E42C0 -k GV1.oss Data1/**/* \n"
+        "   * -lb game2.exe -lo 0x006dc380 -k GV2.oss Data2/**/* \n"
+        "   * -lb game3.exe -lo 0x0149b800 -k GV3.oss Data3/**/* \n"
+        "   * -lb game4.exe -lo 0x0112bc80 -k GV3.oss Data3/**/* \n"
+        "\n"
+        " Two keys listed means 2 passes with each key.\n"
+        " After decrypting with list-bin, some files need a second common key\n"
+        "  (usually snd90210 and bft90210)\n"
+        " Other than .bigrp most formats aren't autodetected and use .bin extension"
+    )
+
+    p = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
+    p.add_argument("files", help="files to match (accepts wildcards)", nargs="*", default=["Data/**/*"])
+    p.add_argument("-l", "--list", help="list info instead of decrypting", action="store_true")
+    p.add_argument("-do", "--decryption-offset", help="offset where to start decryption (needed for few files)")
+    p.add_argument("-k", "--key", help="key to decrypt files")
+    p.add_argument("-lb","--list-bin", help="decryption table binary file (combined with key)")
+    p.add_argument("-lo","--list-offset", help="decryption table offset in list-bin")
+    p.add_argument("-Ni","--no-name-id", help="don't write internal id in pack for list-bin files", action="store_true")
+    p.add_argument("-z", "--zip", help="decompress files (slower)", action="store_true")
+    p.add_argument("-d", "--dir", help="base output dir", default='_out')
+    p.add_argument("-a", "--autodetect", help="autodetect list-bin offset and key", action="store_true")
+    args = p.parse_args()
+    return args
+
+def main():
+    args = parse()
+    if not args:
+        return
+
+    if args.autodetect:
+        Autodetector(args).process()
+        #return
+
+    # target files
+    files = []
+    for file in args.files:
+        files += glob.glob(file, recursive=True)
+
+    if not files:
+        print("no valid files found")
+        return
+
+    # always needs some key
+    if not args.key:
+        print("key not specified (see help)")
+        return
+
+    # setup decryptor
+    dec = Decryptor(args)
+    dec.parse_list()
+
+    for file in files:
+        ext = os.path.splitext(file)[1]
+        if ext in IGNORED_EXTENSIONS or file in IGNORED_FILES:
+            continue
+        # allow decrypting with standard keys (2nd pass) but only if no list-bin was used
+        if ext == '.' + DEFAULT_EXTENSION:
+            if args.list_bin or args.autodetect:
+                continue
+        
+        try:
+            dec.process_file(file)
+        #except IgnoredError as e:
+        #    pass
+        except ValueError as e:
+            print("error in %s: %s" % (file, str(e)))
 
 if __name__ == "__main__":
-    Cli().main()
+    main()
