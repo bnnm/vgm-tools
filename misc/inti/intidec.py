@@ -532,7 +532,7 @@ class Autodetector(object):
         #  04: low number or FFFFFFFF
         #  08: low number or FFFFFFFF
         #  0c: number
-        max_low = 0x10 # GV3 uses ~0x09
+        max_low = 0x80 # MJG uses ~0x18
         while offset > 0:
             hash, num1, num2, pos = struct.unpack_from("<IiiI", data, offset)
 
@@ -545,7 +545,7 @@ class Autodetector(object):
 
         table2_start = offset + 0x10
         table2_size = table2_end - table2_start #approximate
-        #print("table2: %08x > %08x (~%08x)" % (table2_start, table2_end, table2_size))
+        print("table2: %08x > %08x (~%08x)" % (table2_start, table2_end, table2_size))
 
         # find table1's start, knowing that entries always look like this:
         # #TODO: may not work with list_gv
@@ -553,8 +553,8 @@ class Autodetector(object):
         # 04: offset?
         # 08: low number
         # 0c: offset?
-        max_low1 = 0x100
-        max_low2 = 0x1000
+        max_low1 = 0x800
+        max_low2 = 0x8000
         max_offset = 0xFFFFFF
         offset = table2_start - 0x100 # approximate
         while offset > 0:
@@ -594,7 +594,7 @@ class Autodetector(object):
         key = data[index + 1: end_index + len(suffix)]
         try:
             key = key.decode('utf-8')
-            print('-k: ' + key)
+            print('-k ' + key)
             return key
         except:
             return
@@ -615,7 +615,7 @@ class Autodetector(object):
         if offset:
             self.args.list_offset = '0x%08x' % (offset)
         else:
-            print("-lb (not found)")
+            print("-lo (not found)")
 
         if key:
             self.args.key = key

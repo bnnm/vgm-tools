@@ -10,9 +10,9 @@ Tools:
 
 Like:
 ```
-MArchiveBatchTool.exe fullunpack --keep alldata.psb.m zlib {key}
+MArchiveBatchTool.exe fullunpack --keep alldata.psb.m zlib {key} {keylen}
 
-PsbDecompile info-psb sound_info.psb.m -k {key-hex}
+PsbDecompile info-psb sound_info.psb.m -k {key-hex} -l {keylen}
 ```
 
 Sometimes one tool works better than the other so try both.
@@ -20,3 +20,8 @@ Sometimes one tool works better than the other so try both.
 Default (most common) key is `25G/xpvTbsb+6`. Other keys are usually in plain text in the exe, near "*psb*" strings or first strings (decrypt/decompress exe first, for example for `main` use *nsnsotool*).
 
 Instead of zlib other compressions may exist.
+
+Example
+```
+MArchiveBatchTool.exe fullunpack --keep alldata.psb.m zlib 25G/xpvTbsb+6 64
+```

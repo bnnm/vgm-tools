@@ -15,7 +15,7 @@
 
 import os, sys, glob, struct, argparse, hashlib, pathlib, re
 
-NAMES_LIST = 'names.txt'
+NAMES_LIST = ['names.txt', 'wwnames.txt']
 
 DEFAULT_NAMES = [
     'GVFSP GV1 GV2 GV3 RCG YHN yhn GVA2 gva2 GGAC ggac GGR BSM3 BSM2 BSM BSM1 RRG QON GGAC2',
@@ -74,8 +74,10 @@ def split_line(line, args):
     #if args.lowercase:
     #    line = line.lower()
 
+    #TODO use set parts = set()
+    
     # md5 games hash full paths, while custom hash doesn't
-    if not args.use_md5:
+    if args.use_md5:
         parts = re.split(r"[ ]+", line)
     else:
         parts = re.split(r"[ /]+", line)
@@ -90,29 +92,47 @@ def split_line(line, args):
         for part in list(parts):
             parts.extend([part.lower(), part.upper(), part.capitalize()]) #.title(), .swapcase()
             parts.extend(re.split(r"[_.]+", part))
+            
+    parts = list(dict.fromkeys(parts))
 
     return parts
 
 def generate_hashes(args):
     lines = []
-    try:
-        names = NAMES_LIST
-        first_line = False
-        with open(names, 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
+    for names in NAMES_LIST:
+        try:
+            first_line = False
+            with open(names, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    line = line.strip()
 
-                if not first_line and line.startswith('#@md5'):
-                    args.use_md5 = True
-                    continue
-                first_line = True
+                    if line.startswith('#@apply-renames'):
+                        args.apply_renames = True
+                        continue
 
-                parts = split_line(line, args)
-                lines.extend(parts)
-    except FileNotFoundError as e:
-        print('name list %s failed to load' % names)
+                    if line.startswith('#@files'):
+                        args.files = line.split(' ')[1:]
+                        continue
+
+                    if not first_line and line.startswith('#@md5'):
+                        args.use_md5 = True
+                        continue
+
+                    first_line = True
+
+                    if not line or line.startswith('#'):
+                        continue
+
+                    parts = split_line(line, args)
+
+                    lines.extend(parts)
+        except FileNotFoundError as e:
+            #print('name list %s failed to load' % names)
+            pass
+
+    if not lines:
+        print('not found names in name list')
+        #return None
 
     for line in DEFAULT_NAMES:
         line = line.strip()
@@ -134,7 +154,6 @@ def generate_hashes(args):
         if hash in hashes:
             continue
         hashes[hash] = line
-           
 
     return hashes
 
@@ -205,6 +224,14 @@ def add_parts_basename(basename, ext, hashes, parts):
 
     return False
 
+def is_hexname(basename):
+    if len(basename) != 8:
+        return False
+    try:
+        int(basename, 16)
+        return True
+    except ValueError:
+        return False
 
 def generate_renamed_path(src_path, hashes):
 
@@ -227,8 +254,13 @@ def generate_renamed_path(src_path, hashes):
     if basename:
         ok = add_parts_basename(basename, src_path.suffix, hashes, parts)
         if not ok:
-            # add default in case folders did change
-            parts.append(src_path.name)
+            if list(folders) != parts or not is_hexname(basename):
+                # add default in case folders did change, or is a regular file
+                parts.append(src_path.name)
+            else:
+                #signal that couldn't be renamed
+                return None
+                
             #return None
 
     dst_path = pathlib.Path(*parts)
@@ -257,7 +289,7 @@ def parse():
 
     parser = argparse.ArgumentParser(description=description, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("files", help="files to get (wildcards work)", nargs='*', default=["Data/**/*"])
-    parser.add_argument("-a","--apply-rename", help="actually rename files if hash is found (defaults to print info only)", action='store_true')
+    parser.add_argument("-a","--apply-renames", help="actually rename files if hash is found (defaults to print info only)", action='store_true')
     parser.add_argument("-pm","--print-missing", help="print only missing files", action='store_true')
     parser.add_argument("-pv","--print-valid", help="print only valid files", action='store_true')
     parser.add_argument("-nv","--name-variations", help="use name variations such as different cases (may add false positives)", action='store_true')
@@ -278,15 +310,15 @@ def main():
             print(hash, file)
         return
 
+    hashes = generate_hashes(args)
+
     filenames = []
     for file in args.files:
         filenames += glob.glob(file, recursive=True)
 
-    hashes = generate_hashes(args)
-
     renames = generate_renames(filenames, hashes)
 
-    if not args.apply_rename:
+    if not args.apply_renames:
         for src_path, dst_path in renames:
             if args.print_valid and not dst_path:
                 continue
@@ -294,13 +326,13 @@ def main():
                 continue
             print(src_path, '>', dst_path)
 
-    if args.apply_rename:
+    if args.apply_renames:
         print("renaming files...")
         for src_path, dst_path in renames:
             # rename file
             if not dst_path:
                 continue
-            if not args.apply_rename:
+            if not args.apply_renames:
                 continue
             if not src_path.exists():
                 continue
