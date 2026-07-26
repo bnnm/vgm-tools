@@ -13,3 +13,8 @@ Make a text file named `.hcakey` and copy `NNNNNNNNNNNNNN`. Try to play the `.hc
 Also see this a guide: https://github.com/bnnm/vgm-tools/tree/master/docs/encryption/HCAKEY.md
 
 This is a modified version of *vgmstream* with only AWB/ACB/HCA + bruteforce enabled (uncomment `#define HCA_BRUTEFORCE` in `hca.c` + tweak `vgmstream_init.c` + adapt text in `vgmstream_cli.c`), so there is no actual source code.
+
+
+**Note**: first try this tool which should recover keys https://github.com/Youjose/CriCodecs#cli
+
+The upper bits can't be recovered with CriCodecs though (not important to play files), so I recommend comparing vs the memdump or files to get the real key.

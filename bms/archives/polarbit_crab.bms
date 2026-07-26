@@ -1,0 +1,24 @@
+idstring "CRAB"
+get VERSION long
+
+goto -0x08 0 SEEK_END
+get START long
+idstring "CAOE"
+
+goto START
+
+get FILES long
+
+for I = 0 < FILES
+    get OFFSET long
+    get SIZE long
+    get UNK byte #flags?
+    get NAME_SIZE short
+    getdstring NAME NAME_SIZE
+    get UNK long #?
+
+    log NAME OFFSET SIZE
+
+    
+next I
+

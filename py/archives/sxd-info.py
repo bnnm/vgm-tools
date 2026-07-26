@@ -347,7 +347,7 @@ class SxdParser():
         if   id == b'SXDF':
             self._is_be = False
         else:
-            self.add(f'- not an AWC file')
+            self.add(f'- not an SXD file')
             return
 
         self.add(id)

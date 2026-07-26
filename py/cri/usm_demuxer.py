@@ -427,6 +427,9 @@ class CriUtf():
 
 class CriDemuxer():
     AUDIO_SUFFIX = "audio.usm"
+    FILENAME_CLEANUP = {
+        '.usm.bytes.usm': '.usm'
+    }
 
     def __init__(self, path, args):
         self._path = path
@@ -439,6 +442,8 @@ class CriDemuxer():
         self._video_mask2 = bytearray(0x20)
         self._audio_mask = bytearray(0x20)
         self._crid_chunk = None
+        
+        self._names = {}
 
 
     def _decrypt_init_key(self):
@@ -530,21 +535,51 @@ class CriDemuxer():
             for i in range(0x20 + 0x140, len(chunk)):
                 chunk[i] ^= mask[i & 0x1F]
 
+    def _get_filename(self, id, chno):
+        args = self._args
+
+        filename = None
+        try:
+            if args.extract_audio:
+                # per-track name
+                stmid = int.from_bytes(id, byteorder='big')
+                filename = self._names.get((stmid, chno))
+                filename = filename.decode('utf-8')
+            else:
+                # global .usm name
+                filename = self._names.get((0, 65535))
+                filename = filename.decode('utf-8')
+                filename = os.path.basename(filename)
+                for key, value in self.FILENAME_CLEANUP.items():
+                    filename = filename.replace(key, value)
+        except:
+            print(f"couldn't load filename for stmid={id}, chno={chno}")
+            filename = '' #may happen for non-utf names; ignore original name
+
+        if not filename:
+            filename = self._path
+
+        return filename
+
     # get existing writer or create a new one for current track
     # (dynamic since this depends on config)
     def _get_writer(self, id, chno, chunk):
         args = self._args
-        if id == b'@SFV' and self._video_tracks == 1:
-            chno = None
-        if id == b'@SFA' and self._audio_tracks == 1 or not args.split:
-            chno = None
 
-        key = (id, chno)
+        stream = chno
+        if id == b'@SFV' and self._video_tracks == 1:
+            stream = None
+        if id == b'@SFA' and self._audio_tracks == 1 or not args.split:
+            stream = None
+
+        key = (id, stream)
         fw = self._writers.get(key)
         if fw:
             return fw
 
-        outname, base_ext = os.path.splitext(self._path)
+        filename = self._get_filename(id, chno)
+        outname, base_ext = os.path.splitext(filename)
+        
         if args.demux_audio:
             if not args.split:
                 ext = 'audio' + base_ext
@@ -567,8 +602,8 @@ class CriDemuxer():
             #TODO: .h264
 
         track = ''
-        if chno is not None:
-            track = f'.chno{chno}'
+        if stream is not None:
+            track = f'.chno{stream}'
 
         outname = f'{outname}{track}.{ext}'
         fw = open(outname, 'wb')
@@ -602,7 +637,9 @@ class CriDemuxer():
         for row in range(utf.rows):
             filename = utf.query(row, 'filename') #original name before converting
             stmid = utf.query(row, 'stmid')
-            #chno = utf.query(row, 'chno')
+            chno = utf.query(row, 'chno')
+
+            self._names[(stmid, chno)] = filename
 
             # first stream uses stmid == 0 for base .usm
             if stmid == 0x40534641: #@SFA
@@ -702,7 +739,7 @@ def parse():
     parser.add_argument("-a","--extract-audio", help="extract audio payload instead of demuxing audio", action='store_true')
     parser.add_argument("-k","--key", help="decryption key used with -v/-a, 64-bit integer or hex")
     parser.add_argument("-kf","--keyfile", help="use xorpad decryption in key.bin", action='store_true')
-    #parser.add_argument("-n","--names", help="use internal names if possible", action='store_true')
+    parser.add_argument("-n","--names", help="use internal names if possible", action='store_true')
     args = parser.parse_args()
 
     if args.key:

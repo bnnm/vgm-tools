@@ -223,7 +223,7 @@ class CriUtf():
 
         utf.schema = [None] * utf.columns
 
-        for i in range (utf.columns):
+        for i in range(utf.columns):
             utf.schema[i] = CriUtf.CriUtfColumn()
         
             info = self.get_u8(utf.schema_buf, schema_pos + 0x00)
@@ -281,6 +281,8 @@ class CriUtf():
         self.columns = len(utf.schema)
         self.name = utf.table_name
 
+    def get_context(self):
+        return self._utf
 
     def get_column_num(self, column_name):
         utf = self._utf
@@ -433,10 +435,51 @@ class CriPrinter():
         padding = ' ' * self._indent
         self._lines.append(padding + text)
 
-    
 
-    def _parse_utf(self, data):
+    def _handle_utf_header(self, data):
         utf = CriUtf(data)
+        ctx = utf.get_context()
+
+        self.next("Header")
+        self.info(f"table_size:     0x{ctx.table_size:08x}")
+        self.info(f"version:        0x{ctx.version:04x}")
+        self.info(f"rows_offset:    0x{ctx.rows_offset:04x}")
+        self.info(f"strings_offset: 0x{ctx.strings_offset:08x}")
+        self.info(f"data_offset:    0x{ctx.data_offset:08x}")
+        self.info(f"name_offset:    0x{ctx.name_offset:08x}")
+        self.info(f"columns:        {ctx.columns}")
+        self.info(f"row_width:      0x{ctx.row_width:04x}")
+        self.info(f"rows:           {ctx.rows}")
+        self.prev("")
+
+        self.next("Derived")
+        self.info(f"schema_offset:  0x{ctx.schema_offset:08x}")
+        self.info(f"schema_size:    0x{ctx.schema_size:04x}")
+        self.info(f"rows_size:      0x{ctx.rows_size:04x}")
+        self.info(f"data_size:      0x{ctx.data_size:04x}")
+        self.info(f"strings_size:   0x{ctx.strings_size:04x}")
+        self.info(f"table_name:     {ctx.table_name}")
+        self.prev("")
+
+        self.next("Schema")
+        for i in range(ctx.columns):
+            col = ctx.schema[i]
+            text = str(col)
+            
+            mark = ''
+            if col.flag & CriUtf.COLUMN_FLAG_ROW and col.offset > ctx.row_width:
+                mark = ' (past row)'
+            
+            self.info(f"col[{i}]: {text} @0x{col.offset:02x}{mark}")
+        self.prev("")
+
+    def _handle_utf_data(self, data, table_header=False):
+        utf = CriUtf(data)
+
+        if table_header:
+            self.next('TableInfo')
+            self._handle_utf_header(data)
+            self.prev('')
 
         for row_pos in range(utf.rows):
             self.next( f"{utf.name}[{row_pos}] = {{" )
@@ -462,11 +505,11 @@ class CriPrinter():
                         subdata = data[offset : offset + size]
                         if subdata[0:4] == b'@UTF':
                             self.next("{")
-                            self._parse_utf(subdata)
+                            self._handle_utf_data(subdata, table_header)
                             self.prev( "}" )
                 
             self.prev("}")
-            
+
 
     def _read_utf_data(self, f, offset=0):
         f.seek(offset)
@@ -484,7 +527,7 @@ class CriPrinter():
 
 
     # include new file
-    def parse_file(self, filename, offset=0):
+    def parse_file(self, filename, offset=0, table_header=False):
         with open(filename, 'rb') as f:
             data = self._read_utf_data(f, offset)
             if not data:
@@ -492,13 +535,19 @@ class CriPrinter():
                 return
 
             self.next(filename)
-            self._parse_utf(data)
+            self._handle_utf_data(data, table_header)
             self.prev('')
 
         if self._print_stdout:
             print('\n'.join(self._lines))
         else:
-            with open(filename + ".txt", 'w', encoding='utf-8') as f:
+            
+            #if table_header:
+            #    out_name = filename + ".hdr.txt"
+            #else:
+            out_name = filename + ".txt"
+
+            with open(out_name, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(self._lines))
 
 
@@ -510,6 +559,7 @@ def parse():
     parser = argparse.ArgumentParser(description=description, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("files", help="files to get (wildcards work)", nargs='*', default=["*.acb", "*.usm"])
     parser.add_argument("-o","--offset", help="table offset", default=0)
+    parser.add_argument("-t","--table-header", help="prints table header rather than data", action='store_true')
     parser.add_argument("-p","--print-stdout", help="prints instead of writting to file", action='store_true')
     args = parser.parse_args()
 
@@ -530,6 +580,6 @@ def main():
         if not os.path.isfile(filename):
             continue
         cri = CriPrinter(args.print_stdout)
-        cri.parse_file(filename, args.offset)
+        cri.parse_file(filename, args.offset, args.table_header)
 
 main()

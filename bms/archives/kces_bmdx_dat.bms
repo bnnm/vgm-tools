@@ -1,0 +1,119 @@
+# *.DAT extractor for Beatmania IIDX PS2 games
+# tables can be found in the main ELF  (look for size/offsets in sectors,
+# or IDA + find reference to filename + pointer to table)
+#
+# There are no filenames, only debug strings about sdstr/sdmem/etc (SD = KCES SoundDriver)
+# but extensions for some formats come from DDR games that do have them (similar formats)
+
+get FILE_NAME filename
+
+# Beatmania IIDX 11 RED
+if FILE_NAME == "SLPM_664.26"
+    string DUMP_FILE = "DATA1.DAT"
+    math DUMP_OFFSET = 0xE83E8
+    math TYPE = 1
+    callfunction DUMP_TABLE 1
+
+    string DUMP_FILE = "DATA2.DAT"
+    math DUMP_OFFSET = 0xEE440
+    math TYPE = 2
+    callfunction DUMP_TABLE 1
+endif
+
+
+startfunction DUMP_TABLE
+    
+    open FDSE DUMP_FILE 1 EXISTS
+    if EXISTS == 0
+        print "couldn't find %DUMP_FILE%"
+        #break
+        continue DUMP_DONE
+    endif
+
+    get FILE_SIZE asize 1
+    goto DUMP_OFFSET
+    get DUMP_BASENAME basename 1
+    get FILE_SIZE asize 1
+
+    math I = 0
+    for
+        if TYPE == 1
+            get ID long #00..xx
+            get OFFSET long
+            get SIZE long
+            get DUMMY long #always 0
+
+        elif TYPE == 2
+            get OFFSET long
+            get SIZE long
+
+        else 
+            print "unknown type"
+            exit
+        endif
+
+        math OFFSET *= 0x800
+        math SIZE *= 0x800
+
+        callfunction FIND_EXT 1
+        string NAME p= "%s_%04i.%s" DUMP_BASENAME I EXT
+        log NAME OFFSET SIZE 1
+        #print "%NAME%: %OFFSET|h% %SIZE|h%"
+
+        xmath NEXT_OFFSET "OFFSET + SIZE"
+        if NEXT_OFFSET == FILE_SIZE
+            break
+        endif
+
+    next I
+
+DUMP_DONE:
+    math I = 0
+endfunction
+
+startfunction FIND_EXT
+    goto OFFSET 1
+    get ID long 1
+    reverselong ID
+
+    string EXT = "dat"
+
+    # known / official exts
+    if   ID == 0x000001BA
+        string EXT = "pss"
+    elif ID == 0x01006408   # (bgm: p11~14)
+        string EXT = "vig"  # 
+    elif ID == 0x65660100   #"ef\1\0" (banks: p11~12) 
+        string EXT = "swp"
+    elif ID == 0x77700200   #"wp\2\0" (banks: p13~14)
+        string EXT = "swp"  #assumed, same as "ef" .swp
+    elif ID == 0x56495341   #"VISA" (bgm: p7,best)
+        string EXT = "vis"
+
+    # header ids
+    elif ID == 0x50324254   #"P2BT" (bgm: p7~8,best)
+        string EXT = "p2bt"
+    elif ID == 0x4D4F5645   #"MOVE" (bgm: p7~8,best)
+        string EXT = "move"
+    elif ID == 0x47625473   #"GbTs" (bgm: p9~10)
+        string EXT = "gbts"
+    
+    # others/unknown
+    else 
+        if ID == 0x00080000
+            get TEST long 1
+            if TEST == 0x37373737
+                string EXT = "table"
+            endif
+        endif
+ 
+        if ID == 0x10000000 || ID == 0x30000000 || ID == 0x40000000 # (banks)
+            string EXT = "vgmstream" #early version of .swp
+        endif
+
+        if ID == 0x20000000
+            string EXT = "bin" #presumably note info for banks (various)
+        endif
+    endif
+
+endfunction

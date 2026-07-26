@@ -1,0 +1,16 @@
+idstring "TYOSD"
+goto 0xc
+get FILES long
+
+get BASE_NAME basename
+
+for I = 0 < FILES
+    get OFFSET long
+    get SIZE long
+    string NAME p= "%s_%04i." BASE_NAME I
+
+    math OFFSET *= 0x800
+
+    log NAME OFFSET SIZE
+
+next I

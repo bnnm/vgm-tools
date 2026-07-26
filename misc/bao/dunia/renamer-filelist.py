@@ -3,7 +3,9 @@
 # see config below
 import os, sys, argparse, pathlib
 
-AUTOHASH_SOUNDS = True
+HASH_FNV64 = True # Watch Dogs mutant FNV
+
+AUTOHASH_SOUNDS = False
 AUTOHASH_CHUNK_SIZE = 0x00500000 #0x01000000 takes ~2.5GB, so partition searches
 AUTOHASH_NUMBER_MIN = 0x80000000
 AUTOHASH_NUMBER_MAX = 0xA0000000
@@ -11,9 +13,9 @@ AUTOHASH_NUMBER_MAX = 0xA0000000
 AUTOHASH_ADD_SBAO = False
 AUTOHASH_ADD_BAO = False
 AUTOHASH_ADD_SPK = False
-AUTOHASH_ADD_PK = True
+AUTOHASH_ADD_PK = False
 AUTOHASH_ADD_PREFIX_BAO = False #soundbinary\ or not (splinter cell: blacklist)
-AUTOHASH_ADD_PREFIX_PK = True #packages\ or not (POP Trilogy)
+AUTOHASH_ADD_PREFIX_PK = False #packages\ or not (POP Trilogy)
 AUTOHASH_ADD_PREFIX_OX = False
 AUTOHASH_ADD_EXTRA_HASHES_FC = False #games with implicit ids (far cry)
 AUTOHASH_ADD_EXTRA_HASHES_V1 = False #older games with implicit ids (AC1, Lost Via Domus)
@@ -87,10 +89,10 @@ CRC32_TABLE = [
 ]
 
 def crc32(data: bytes) -> int:
-    crc = 0xFFFFFFFF
+    hash = 0xFFFFFFFF
     for b in data:
-        crc = CRC32_TABLE[(crc ^ b) & 0xFF] ^ (crc >> 8)
-    return ~crc & 0xFFFFFFFF
+        hash = CRC32_TABLE[(hash ^ b) & 0xFF] ^ (hash >> 8)
+    return ~hash & 0xFFFFFFFF
 
 def crc32_string(s: str) -> str:
     data = s.encode('utf-8')
@@ -165,19 +167,41 @@ CRC64_TABLE = [
     0x9240000000000000, 0x93F0000000000000, 0x9120000000000000, 0x9090000000000000,
 ]
 
+FNV_OFFSET_BASIS = 0xcbf29ce484222325
+FNV_PRIME = 0x100000001b3
+
 def crc64(data: bytes) -> int:
-    crc = 0
+    hash = 0
     for b in data:
-        crc = CRC64_TABLE[(crc ^ b) & 0xFF] ^ (crc >> 8)
-    return crc
+        hash = CRC64_TABLE[(hash ^ b) & 0xFF] ^ (hash >> 8)
+    return hash
 
 def crc64_string(s: str) -> str:
     data = s.encode('utf-8')
     result = crc64(data)
     return f"{result:016x}"  # Return as 16-digit uppercase hex
 
+def fnv64(data: bytes) -> int:
+    hash = FNV_OFFSET_BASIS
+    for b in data:
+        hash = ((hash * FNV_PRIME) ^ b) & 0xFFFFFFFFFFFFFFFF
+        #hash = ((hash ^ b) * FNV_PRIME) & 0xFFFFFFFFFFFFFFFF
+
+    hash &= 0x1FFFFFFFFFFFFFFF
+    hash |= 0xA000000000000000
+    return hash
+
+
+def fnv64_string(s: str) -> str:
+    data = s.encode('utf-8')
+    result = fnv64(data)
+    return f"{result:016x}"  # Return as 16-digit uppercase hex
+
 
 def hash_string(s: str, is_hash64) -> str:
+    if HASH_FNV64:
+        return fnv64_string(s)
+    
     if is_hash64:
         return crc64_string(s)
     else:
@@ -263,11 +287,12 @@ def process():
             is_upper = f.stem.isupper()
             break
 
-    print(f"reading filelist... (hash64={is_hash64}, upper={is_upper})")
+    print(f"reading filelists... (hash64={is_hash64}, upper={is_upper})")
 
     # hash names from filelist(s)
     hashed_names = {}
     for filelist in base_path.glob("*.filelist"):
+        print(filelist)
         with filelist.open("r", encoding="utf-8") as f:
             for line in f:
                 original_name = line.strip()
@@ -277,6 +302,7 @@ def process():
                 if is_upper:
                     hashed = hashed.upper()
                 hashed_names[hashed] = original_name
+                #print(hashed, original_name)
 
     rename_files(base_path, hashed_names)
         

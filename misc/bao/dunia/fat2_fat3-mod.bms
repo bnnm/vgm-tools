@@ -1,4 +1,4 @@
-# FAT2 and FAT3 Ubisoft games Dunia filesystem (sciprt 0.1.6)
+# FAT2 and FAT3 Ubisoft games Dunia filesystem (script 0.1.6)
 #   Far Cry 3
 #   Far Cry 4
 #   Watch Dogs
@@ -9,6 +9,7 @@
 #
 # mod by bnnm
 
+math FILTER_WWISE = 1
 
 quickbmsver "0.6"
 
@@ -18,7 +19,10 @@ open "FDDE" "dat" 1
 # REMOVED: .nfo format is sometimes an .xml
 
 getdstring FAT_SIGN 4
-if FAT_SIGN == "3TAF"
+if FAT_SIGN == "5TAF"
+    #https://github.com/gibbed/Gibbed.Disrupt/issues/2
+    set FAT_SIGN string "FAT5"
+elif FAT_SIGN == "3TAF"
     set FAT_SIGN string "FAT3"
 elif FAT_SIGN == "FAT3"
     endian big
@@ -41,13 +45,23 @@ else
     get VERSION long
     get DUMMY long
 
-    if FAT_SIGN == "FAT2"
-    if VERSION >= 9
-        xmath FLAG1 "DUMMY & 0xff"  # platform?
-        xmath FLAG2 "(DUMMY >> 8) & 0xff"
-        get DUMMY long
-        get DUMMY long
-    endif
+    if FAT_SIGN == "FAT2" || FAT_SIGN == "FAT5"
+        if VERSION >= 9
+            xmath FLAG1 "DUMMY & 0xff"  # platform?
+            xmath FLAG2 "(DUMMY >> 8) & 0xff"
+            get DUMMY long
+            get DUMMY long
+        endif
+        if VERSION >= 0x0D
+            get EXTRA_FLAG long
+            if EXTRA_FLAG == 1
+                get DUMMY longlong
+                get DUMMY longlong
+            endif
+
+            savepos CURRENT
+            xmath EXTRATABLE_START "CURRENT + (0x14 * FILES) + 0x04"
+        endif
     endif
 endif
 
@@ -61,13 +75,39 @@ if FAT_SIGN == "FAT2" && VERSION >= 9
     endif
 endif
 
+
 for i = 0 < FILES
-    #savepos CURRENT
+    savepos CURRENT
     #print " pos=%CURRENT|x%"
     
     math IS_CHUNKED = 0
+    if FAT_SIGN == "FAT5"
+        get NAME_CRC longlong
+        get TEMP_B long
+        get TEMP_C long
+        get TEMP_D long
+        
+        if TEMP_B == 0xFFFFFFFF && TEMP_C == 0xFFFFFFFF 
+            savepos CURRENT_EX
 
-    if FAT_SIGN == "FAT2"
+            xmath EXTENDED_OFFSET "EXTRATABLE_START + TEMP_D * 0x1C"
+            goto EXTENDED_OFFSET
+
+            get NAME_CRC longlong #same
+            get ZSIZE long 
+            get SIZE long
+            get OFFSET longlong
+            get ZTYPE long
+
+            goto CURRENT_EX
+        else
+            xmath ZSIZE "TEMP_B & ((1 << 30) - 1)"
+            xmath OFFSET "(TEMP_C << 2) | ((TEMP_B >> 30) & 0x3)"
+            xmath SIZE "(TEMP_D >> 2) & ((1 << 30) - 1)"
+            xmath ZTYPE "(TEMP_D & 0x3)"
+        endif
+
+    elif FAT_SIGN == "FAT2"
         if VERSION >= 9
             get NAME_CRC longlong
             get SIZE long
@@ -106,7 +146,7 @@ for i = 0 < FILES
     endif
 
     callfunction GET_NAME_FROM_CRC 1
-    #print " %NAME%: o=%OFFSET|x% z=%ZSIZE|x% s=%SIZE|x% zt=%ZTYPE%"
+    print " %NAME%: o=%OFFSET|x% z=%ZSIZE|x% s=%SIZE|x% zt=%ZTYPE% at %CURRENT|x%"
 
 
     if SIZE == 0
@@ -114,6 +154,23 @@ for i = 0 < FILES
             log NAME OFFSET ZSIZE 1
         endif
 
+    elif FAT_SIGN == "FAT5"
+        math IS_CHUNKED = 0
+        comtype copy #ztype 0
+
+        math WRITE_FILE = 1
+        if FILTER_WWISE == 1
+            goto OFFSET 1
+            get ID long 1
+            if ID != 0x44484B42 && ID != 0x46464952 #BKHD, RIFF
+                math WRITE_FILE = 0
+            endif
+        endif
+
+        if WRITE_FILE == 1
+        clog NAME OFFSET ZSIZE SIZE 1
+        endif
+        
     elif FAT_SIGN == "FAT2" && IS_CHUNKED == 0
         if VERSION >= 9
               if ZTYPE == 0
@@ -247,9 +304,12 @@ for i = 0 < FILES
 next i
 
 startfunction GET_NAME_FROM_CRC
-    xmath TMP_CRC "NAME_CRC >> 32"
+    xmath TMP_CRC "(NAME_CRC >> 32) & 0xFFFFFFFF"
     
-    if VERSION >= 9
+    if VERSION >= 0x0d
+        string NAME p "%08x%08x" TMP_CRC NAME_CRC #le
+
+    elif VERSION >= 9
         if IS_BE == 1
             string NAME p "%08x%08x" TMP_CRC NAME_CRC #be
         else

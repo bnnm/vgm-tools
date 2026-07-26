@@ -237,7 +237,7 @@ class CriUtf():
 
         utf.schema = [None] * utf.columns
 
-        for i in range (utf.columns):
+        for i in range(utf.columns):
             utf.schema[i] = CriUtf.CriUtfColumn()
         
             info = self.get_u8(utf.schema_buf, schema_pos + 0x00)
@@ -295,6 +295,9 @@ class CriUtf():
         self.columns = len(utf.schema)
         self.name = utf.table_name
 
+
+    def get_context(self):
+        return self._utf
 
     def get_column_num(self, column_name):
         utf = self._utf

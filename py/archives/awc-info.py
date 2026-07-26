@@ -393,16 +393,24 @@ class AwcParser():
                 channel_entries[ch] = entries
 
             # seek table
-            for ch in range(self._channels):
-                for i in range(channel_entries[ch]):
-                    self.s32()
-            
+            if self._stream_codec not in [0x0F]:
+                for ch in range(self._channels):
+                    for i in range(channel_entries[ch]):
+                        self.s32()
+
             offset = self.pos()
 
             # extra data
-            if self._stream_codec in [0x0D, 0x0F]:
-                offset += 0x70
-                self.pos(offset)
+            frame_sizes = [0] * self._channels
+            for ch in range(self._channels):
+                if self._stream_codec in [0x0D, 0x0F]:
+                    fourcc = self.u32()
+                    frame_sizes[ch] = self.s16()
+                    frame_samples = self.s16()
+                    offset += 0x70
+                    self.pos(offset)
+                else:
+                    frame_sizes[ch] = 0x800
 
             header_size = offset - block_offset
 
@@ -414,7 +422,20 @@ class AwcParser():
                 self.pos(block_offset + header_size)
                 offset = self.pos()
             
-            self.add(f'header={header_size:08x}, data at {offset:08x}')
+            # data starts
+            chunk_offsets = []
+            for ch in range(self._channels):
+                chunk_offsets.append(offset)
+                chunk_size = 0
+                frame_size = frame_sizes[ch]
+                chunk_size = channel_entries[ch] * frame_size
+                if self._stream_codec in [0x07]:
+                    chunk_size = ((chunk_size + 0x0F) // 0x10) * 0x10 #pad
+                
+                offset += chunk_size
+            
+            offset_info = " ".join(f"{chunk_offset:08x}" for chunk_offset in chunk_offsets)
+            self.add(f'header={header_size:08x}, data at {offset_info}')
 
             self.prev().add('')
             block_offset += block_chunk
