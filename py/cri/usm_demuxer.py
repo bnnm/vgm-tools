@@ -538,6 +538,10 @@ class CriDemuxer():
     def _get_filename(self, id, chno):
         args = self._args
 
+        # by default use .usm filename since internal names can be wonky
+        if not args.names:
+            return self._path
+
         filename = None
         try:
             if args.extract_audio:
