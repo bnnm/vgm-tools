@@ -12,6 +12,7 @@
 
 import os, struct, argparse, glob
 import UnityPy
+from UnityPy.helpers.ResourceReader import get_resource_data
 
 EXTRACTED_ASSETS = ['AudioClip', 'TextAsset', 'VideoClip']
 
@@ -151,7 +152,13 @@ class ObjectHandler():
         intdata = None
         if obj.type.name == "AudioClip":
             # no other way to get actual clip data (API converts to wav)
-            intdata = data.m_AudioData
+            resource = data.m_Resource
+            intdata = data.m_AudioData or get_resource_data(
+                resource.m_Source,
+                data.object_reader.assets_file,
+                resource.m_Offset,
+                resource.m_Size,
+            )
 
         if obj.type.name == "TextAsset":
             intdata = data.script
