@@ -1,0 +1,119 @@
+# dumb extractor of uasset/ubulk (WwiseMultiReferenceAssetLibrary) packages
+# TODO: check cue4parse
+
+math WRITE_PATH = 1
+math FIND_SIMPLE = 0
+get BASENAME basename
+
+open FDDE "uasset" 0
+open FDDE "ubulk" 1 UBULK_EXISTS
+
+
+# header
+get DUMMY long
+get MEMORY_START long
+get TYPE long #01/02=asset only?, 05=ubulk?
+get DUMMY long
+
+get UNK short
+get UNK short
+get UNK_START long #may be outside uasset
+get DATA_END long
+get UNK long
+
+if FIND_SIMPLE == 0
+    get UNK long
+    get UNK long
+    get UNK long
+    get UNK long
+
+    get UNK long
+    get STRINGS_COUNT long
+    get STRINGS_SIZE long
+    get UNK long
+
+    get UNK long
+    for I = 0 < STRINGS_COUNT
+        get HASH longlong
+    next I
+    for I = 0 < STRINGS_COUNT
+        get STRING_SIZE short
+    next I
+    getdstring DUMMY STRINGS_SIZE
+
+    padding 0x08
+    savepos OFFSET
+
+else
+    goto OFFSET 0
+    findloc OFFSET binary "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"
+    math OFFSET -= 0x18
+    if OFFSET > DATA_END
+        cleanexit
+    endif
+endif
+
+# file table
+goto OFFSET 0
+get DUMMY longlong 0
+get FILES_SIZE longlong 0
+math FILES_SIZE /= 0x20
+set FILES FILES_SIZE
+
+for I = 0 < FILES
+    get OFFSET longlong 0
+    get DUMMY longlong 0
+    get SIZE longlong 0
+    get FLAGS longlong 0
+
+    math EXTRACT = 0
+
+    math IS_STREAMED = 0
+    # unsure about exact meaning, memory audio uses 0x0000000 and streams 0x00010501
+    if FLAGS & 0x00010001
+        math IS_STREAMED = 1
+        if UBULK_EXISTS == 0
+            print "UBULK not found"
+        endif
+    endif
+
+    # can be .wem and .bnk
+    string EXT = "."
+    if IS_STREAMED == 1
+        goto OFFSET 1
+        get ID long 1
+    else
+        math OFFSET += MEMORY_START
+
+        savepos CURRENT 0
+        goto OFFSET 0
+        get ID long 0
+        goto CURRENT 0
+    endif
+
+    if ID == 0x46464952 #RIFF
+        math EXTRACT = 1
+        string EXT = ".wem"
+    elif ID == 0x44484B42 #BKHD
+        math EXTRACT = 1
+        string EXT = ".bnk"
+    endif
+
+    if EXTRACT == 1
+        if FILES == 1
+            string NAME p= "%s%s" BASENAME EXT
+        else
+            string NAME p= "%s_%05i%s" BASENAME I EXT
+        endif
+        if WRITE_PATH != 0
+            string NAME p "%s/%s" BASENAME NAME
+        endif
+
+        #print "%NAME%: %OFFSET|h% %SIZE|h%"
+        if IS_STREAMED == 1
+            log NAME OFFSET SIZE 1
+        else
+            log NAME OFFSET SIZE 0
+        endif
+    endif
+next I

@@ -1,0 +1,49 @@
+WwiseMultiReferenceAssetLibrary / WwiseAsset_Chunk ripping:
+- some games use special .uassets with unreal links to play files
+- inside there are N references to wem and bnk by wwise id (maybe has unreal id and/or index)
+- there is a big `Wwise(something).uasset` + `.ubulk` with many .wem and .bnk (can be considered a type of .pck I guess)
+- `.uasset` has an index to files in ubulk, however there are no wwise ids in uasset (probably only unreal ids)
+
+Possibly this could be extracted with Fmodel + .usmap for the game, but not sure about support.
+
+We use some scripts to extract + rename as a workaround.
+
+
+Steps:
+
+- use Fmodel to extract all WwiseMultiReferenceAssetLibrary.uasset/ubulk and similar files
+  - if Fmodel has issues unpacking some ubulk try retoc: https://github.com/trumank/retoc
+    retoc.exe -a (hex aes key) unpack pakchunk(name).utoc out
+
+- copy scripts to extracted folder
+
+- unpack .uasset using WwiseMultiReferenceAssetLibrary.bms
+  - for /r %%x in (*.uasset) do  _quickbms_4gb_files.exe -Q -K WwiseMultiReferenceAssetLibrary.bms "%%x" "%%~dpx\"
+  - this creates a dir with many .wem/.bnk with incorrect names
+
+- check that .bnk where extracted in *Sound\Events\* and similar files, 
+  - since UE version change stuff around you may use bkhd_extractor.bms, inside change + run
+    math USE_BASENAME = 0
+    math USE_LANGS = 0
+
+- use "mover.py **/*.bnk **/*.wem" to move extracted files (this keeps subdirs)
+
+- use wwiser to create a big banks.xml from all .bnk with all sourceID and cacheID
+  wwiser.py *.bnk -r -d xsl_xs
+
+- use banks-cacheid-sourceid.py with banks.xml to create a list of cacheID > sourceID (.wem name)
+  - this creates cacheid-sourceid.txt
+
+- use filename-cacheid.py with cacheid-sourceid.txt in the Wwise(folder)/*.wem to create a list of filename > cacheID
+
+- use filename-renamer.py with the above 2 lists to rename all (generic-name).wem to (wwise-id).wem
+
+- not all .wem may be renamed, since this tool can only rename .wem actually used in .bnk and other may be leftovers
+  (should find and load every bank to create banks.xml)
+
+Then:
+- reverse wwnames.txt as usual (all event/bnk names should be in *Sound\Events\*)
+
+- use wwnames.txt + wwise-bnk-renamer.py to rename banks
+
+- use wwiser to make .txtp as needed

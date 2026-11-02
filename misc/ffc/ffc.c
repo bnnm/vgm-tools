@@ -221,15 +221,15 @@ int main(int argc, char** argv) {
         int res = 0;
         switch(mode) {
             case MODE_S16_FUZZY:
-                printf("comparing pcm16 fuzzy at %x\n", start);
+                //printf("comparing pcm16 fuzzy at %x\n", start);
                 res = compare_pcm16_fuzzy(file1, file2, start, filesize1);
                 break;
             case MODE_F32_FUZZY:
-                printf("comparing f32 fuzzy at %x\n", start);
+                //printf("comparing f32 fuzzy at %x\n", start);
                 res = compare_float_fuzzy(file1, file2, start, filesize1);
                 break;
             default:
-                printf("comparing exact at %x\n", start);
+                //printf("comparing exact at %x\n", start);
                 res = compare_exact(file1, file2, start, filesize1);
                 break;
         }
