@@ -1,8 +1,34 @@
-# LEGO Batman 2 - DC Super Heroes Wii demuxer
+# Traveller's Tales FMV demuxer
+#   LEGO Batman 2: DC Super Heroes
+#   LEGO Harry Potter Years 1-4
+
+# 00: FMV!
+# 04: version?
+# 08: width x heigth
+# 0c: rate?
+# 10: related to video size?
+# 14: related to audio size?
+# 18: ?
+# 1c: 0/1? (1 seen in 5.1 files)
+# 1e: streams
+# per stream
+# 00 sample rate
+# 04: always 1 (codec?)
+# 05: stream id (0..N)
+# 06: stream channels
+# 07: bps? (16)
+# data: FMA* and FMV* chunks
 
 get FILE_SIZE asize
-log MEMORY_FILE 0 0x28
-set OFFSET long 0x28
+
+goto 0x1E
+get STREAMS short
+
+xmath HEADER_SIZE "0x20 + (0x08 * STREAMS)"
+
+log MEMORY_FILE 0 HEADER_SIZE
+set OFFSET long HEADER_SIZE
+
 
 append #on
 do 
@@ -18,7 +44,8 @@ do
         break
     endif
 
-    # accept standard SCHl
+    # accept FMA chunks (last byte is the stream ID)
+    math BLOCK_ID &= 0xFFFFFF00
     if BLOCK_ID == 0x464D4100 #"FMA\0"
         log MEMORY_FILE OFFSET BLOCK_SIZE
     endif
@@ -31,7 +58,7 @@ append #off
 
 get BASE_NAME basename
 get EXT extension
-string NAME p= "%s.audio.%s.vgmstream" BASE_NAME EXT
+string NAME p= "%s.audio.%s" BASE_NAME EXT
 
 
 get SIZE asize MEMORY_FILE
