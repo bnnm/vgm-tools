@@ -1,0 +1,20 @@
+# System Prisma PSP *.ARC extractor
+
+idstring "DSARCIDX"
+get FILES longlong
+
+xmath EXTRA " (FILES * 0x02) % 0x10 "
+if EXTRA != 0
+    xmath EXTRA " 0x10 - EXTRA"
+endif
+
+xmath START "0x10 + (FILES * 0x02) + EXTRA "
+goto START
+for I = 0 < FILES
+  getdstring NAME 0x28
+  get SIZE long
+  get OFFSET long
+
+  #string NAME p= "N%03i_%s" I NAME
+  log NAME OFFSET SIZE
+next I

@@ -1,0 +1,26 @@
+# System Prisma PSP GATT (.GT) extractor
+
+idstring "GATT"
+get FILES long
+get DUMMY long
+get DUMMY long
+
+for I = 0 < FILES
+  getdstring NAME 0x0c
+  get OFFSET long
+  get SIZE long
+  math OFFSET *= 0x800
+  math SIZE *= 0x800
+  
+  savepos CURRENT
+  goto OFFSET
+  get ID long
+  if ID == 0x46464952 #RIFF
+    get SIZE long
+    math SIZE += 0x08
+  endif
+  goto CURRENT
+
+  #string NAME p= "N%03i_%s" I NAME
+  log NAME OFFSET SIZE
+next I

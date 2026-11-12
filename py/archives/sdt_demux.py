@@ -36,26 +36,27 @@ padding_type_map = {
 }
 
 # maps ids to extensions (not all are correct)
+# (those IDs are used as-is and aren't bitflags)
 extension_map = {
     # "sdx" audio
-    0x00000001: "vgmstream",# ZOE/MGS2 audio
+    0x00000001: "vgmstream",# ZOE/MGS2 audio, aka PCM
     0x00010001: "mta2",     # MGS4 BGM
     0x00020001: "mta2",     # MGS4 voices
     0x00030001: "msf",      # MGS3 HD (PS3)
 	0x00040001: "xwma",     # MGS3 HD (X360)
 	0x00050001: "9tav",     # MGS3 HD (Vita)
-    0x00100001: "vag",      # MGS3 VAG1/VAG2 (PS2/PS3)
+    0x00100001: "stv",      # MGS3 VAG1/VAG2 (PS2/PS3), aka STV
     0x00110001: "mta",      # MGS3 (PS2/PS3)
 
-    0x00000002: "dmx",      # MGS4, MGS3 HD, ZOE HD
+    0x00000002: "dmx",      # MGS4, MGS3 HD, ZOE HD, aka DEMO
     0x00010002: "dmx_1",    # MGS3 HD
     0x00020002: "dmx_2",    # MGS3 HD
     0x00030002: "dmx_3",    # MGS3 HD
     0x00040002: "dmx_4",    # MGS3 HD
 
-	0x00000003: "nrm",
+	0x00000003: "nrm",      # aka LIP
 
-    0x00000004: "sub",      # MGS4, MGS3 HD (with "PACB")
+    0x00000004: "sub",      # MGS4, MGS3 HD (with "PACB"), aka CAP
 	0x00010004: "sub_en",   # HD remasters (type not on MGS2/3 PS2 executable)
 	0x00020004: "sub_fr",   # "
 	0x00030004: "sub_de",   # "
@@ -64,32 +65,36 @@ extension_map = {
 	0x00060004: "sub_jp",   # "
 	0x00070004: "sub_jp",   # "
 
-    0x00000005: "dmx5",     # HD remasters only
+    0x00000005: "dmx5",     # HD remasters only, aka MOTION
 
-    0x00000006: "_bpx",     # MGS2 HD
-    0x00010006: "_bpx",     # 
-    0x00020006: "_bpx",     # 
-    0x00030006: "_bpx",     # 
-    0x00040006: "_bpx",     # 
-    0x00050006: "_bpx",     # 
-    0x00060006: "_bpx",     # 
-    0x00070006: "_bpx",     # 
+    0x00000006: "_bpx",     # MGS2 HD, aka CODEC_CAP
+    0x00010006: "_bpx",     # (EN?)
+    0x00020006: "_bpx",     # (FR?)
+    0x00030006: "_bpx",     # (GE?)
+    0x00040006: "_bpx",     # (IT?)
+    0x00050006: "_bpx",     # (SP?)
+    0x00060006: "_bpx",     # (KO?)
+    0x00070006: "_bpx",     # (JA?)
 
     0x00000007: "_vid",     # vid? (from demux_dat)
 
-    0x0000000c: "pac",      # MGS2 XBOX (MPEG2 video)
+    0x0000000c: "pac",      # MGS2 XBOX (MPEG2 video), possibly HD = CRI_MPEG
     
-    0x0000000d: "pac",      # MGS2 XBOX (MPEG2 video)
+    0x0000000d: "pac",      # MGS2 XBOX (MPEG2 video), possibly HD = CRI_IPIC
     
 	0x0000000e: "pss",      # MGS2 PS2 (MPEG2 video)
 	0x0002000e: "_mov4",    # MGS4 PS3 (unknown video)
     
 	0x0000000f: "ipu",      # MGS2 PS2 (MPEG2 video)
-
-    0x00000020: "m2v",      # HD remasters (all consoles, regardless of format)
     
-#   0x00000010: "start",    # "file start" control block (not data)
-#   0x000000f0: "end",      # "file end" control block (not data)
+   #0x00000010: "ipu",      # MGS2 PS2 (MPEG2 video)
+
+    0x00000020: "m2v",      # HD remasters (all consoles, regardless of format), aka MOVIE
+
+#   0x00000010: "start",    # "file start" control block (not data), aka SYSTEM
+#   0x00000080: "use",      # control block?, aka END (exists?)
+#   0x000000f0: "end",      # "file end" control block (not data), aka END
+#   0x000000ff: "bufend",   # control block?, aka BUFEND (exists?)
 }
 
 #header_id_map = {

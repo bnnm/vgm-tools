@@ -717,8 +717,10 @@ class CriDemuxer():
 
     def process(self):
         path = self._path
-        if '.chno' in path or '.audio.' in path:
-            return
+
+        #if '.chno' in path or '.audio.' in path:
+        #    print("ignored file")
+        #    return
 
         if self._args.key:
             self._decrypt_init_key()

@@ -41,8 +41,11 @@ def get_hash(file):
 
 def get_items(path):
     items = [] #not dict in case of dupes
-    files = glob.glob(path)
+
+    pattern = glob.escape(path)
+    files = glob.glob(pattern + '/*.*')
     files.sort()
+
     for file in files:
         ext = os.path.splitext(os.path.basename(file))[1]
         if ext in ignore_exts:
@@ -54,8 +57,9 @@ def get_items(path):
 
 
 def main():
-    items_tg = get_items(dir_tg + '/*.*')
-    items_ut = get_items(dir_ut + '/*.*')
+    items_tg = get_items(dir_tg)
+    items_ut = get_items(dir_ut)
+    print(items_tg)
 
     tags = []
     for hash_tg, file_tg in items_tg:

@@ -8,6 +8,10 @@ import sys
 import struct
 import glob
 
+
+AUTO_IDENTIFY_FOURCC = True
+COMMON_EXTENSIONS = (".py", ".bat", ".txt", ".dll", ".exe")
+
 fourcc_type = {
     b'@UTF': 'acb-acf',
     b'OggS': 'ogg',
@@ -93,6 +97,8 @@ def main():
     #files = glob.glob('**/*', recursive=True)
     files = glob.glob('*', recursive=True)
     for filename in files: #os.listdir("."):
+        if filename.endswith(COMMON_EXTENSIONS):
+            continue
         if not os.path.isfile(filename):
             continue
 
@@ -136,8 +142,16 @@ def main():
                 type = "ktsl2gcbin"
 
         if not type:
-            #print("unknown file %s" % filename)
-            continue
+            if not AUTO_IDENTIFY_FOURCC:
+                continue
+            fourcc_str = str(fourcc)
+            fourcc_str = fourcc_str[2:-1]
+            fourcc_str = fourcc_str.rstrip('\\x00')
+            type = fourcc_str.replace('\\', '').strip()
+            if not type or fourcc[0] < 0x20 or fourcc[0] > 128:
+                type = 'unknown'
+            type = '_auto/' + type
+
 
         subdir = ''
         if fourcc == b'XWAV':

@@ -418,10 +418,11 @@ class CriUtf():
 #------------------------------------------------------------------------------
 
 class CriPrinter():
-    def __init__(self, print_stdout=False):
+    def __init__(self, print_stdout=False, table_header=False):
         self._indent = 0
         self._lines = []
         self._print_stdout = print_stdout
+        self._table_header = table_header
 
     def next(self, text):
         self.info(text)
@@ -473,10 +474,10 @@ class CriPrinter():
             self.info(f"col[{i}]: {text} @0x{col.offset:02x}{mark}")
         self.prev("")
 
-    def _handle_utf_data(self, data, table_header=False):
+    def _handle_utf_data(self, data):
         utf = CriUtf(data)
 
-        if table_header:
+        if self._table_header:
             self.next('TableInfo')
             self._handle_utf_header(data)
             self.prev('')
@@ -505,46 +506,74 @@ class CriPrinter():
                         subdata = data[offset : offset + size]
                         if subdata[0:4] == b'@UTF':
                             self.next("{")
-                            self._handle_utf_data(subdata, table_header)
+                            self._handle_utf_data(subdata)
                             self.prev( "}" )
                 
             self.prev("}")
 
+    def _read_u32be(self, data, offset):
+        return struct.unpack_from('>I', data, offset)[0]
 
-    def _read_utf_data(self, f, offset=0):
+    def _read_u16be(self, data, offset):
+        return struct.unpack_from('>H', data, offset)[0]
+
+    def _read_u8(self, data, offset):
+        return data[offset]
+
+    def _read_crid_data(self, f, filename):
+        f.seek(0, 2)
+        file_size = f.tell()
+
+        offset = 0x00
+        while offset < file_size:
+            f.seek(offset)
+
+            data = f.read(0x20)
+            type = data[0:4]
+            size = self._read_u32be(data, 0x04)
+            head = self._read_u16be(data, 0x08)
+            padd = self._read_u16be(data, 0x0a)
+            chno = self._read_u8   (data, 0x0c)
+            conf = self._read_u16be(data, 0x0e)
+
+            if conf in (0x01, 0x03): #header or metadata
+                type_str = type.decode('utf-8')
+                filename_type = f"{filename}-{type_str}-conf{conf}"
+                self._read_utf_data(f, filename_type, offset + 0x20)
+
+            offset += size + 0x08
+
+    def _read_utf_data(self, f, filename, offset=0):
         f.seek(offset)
         data = f.read(0x08)
 
-        if data[0:4] == b'CRID':
-            f.seek(0x20)
-            data = f.read(0x08)    
+        type = data[0:4]
+        if type == b'CRID':
+            self._read_crid_data(f, filename)
+            return
 
-        if data[0:4] != b'@UTF':
-            return None
-        size = struct.unpack_from('>I', data, 0x04)[0]
+        if type != b'@UTF':
+            print(f"not an utf file: {filename}, {type}")
+            return
+
+        size = self._read_u32be(data, 0x04)
         data += f.read(size)
-        return data
 
+        self.next(filename)
+        self._handle_utf_data(data)
+        self.prev('')
 
     # include new file
-    def parse_file(self, filename, offset=0, table_header=False):
+    def parse_file(self, filename, offset=0):
         with open(filename, 'rb') as f:
-            data = self._read_utf_data(f, offset)
-            if not data:
-                print(f"not an utf file: {filename}")
-                return
+            self._read_utf_data(f, filename, offset)
 
-            self.next(filename)
-            self._handle_utf_data(data, table_header)
-            self.prev('')
+        if not self._lines:
+            return
 
         if self._print_stdout:
             print('\n'.join(self._lines))
         else:
-            
-            #if table_header:
-            #    out_name = filename + ".hdr.txt"
-            #else:
             out_name = filename + ".txt"
 
             with open(out_name, 'w', encoding='utf-8') as f:
@@ -579,7 +608,7 @@ def main():
     for filename in filenames:
         if not os.path.isfile(filename):
             continue
-        cri = CriPrinter(args.print_stdout)
-        cri.parse_file(filename, args.offset, args.table_header)
+        cri = CriPrinter(args.print_stdout, args.table_header)
+        cri.parse_file(filename, args.offset)
 
 main()

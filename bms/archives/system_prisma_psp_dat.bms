@@ -1,0 +1,14 @@
+# System Prisma PSP DATA.DAT extractor
+
+idstring "PSPFS_V1"
+get FILES longlong
+
+for I = 0 < FILES
+  getdstring NAME 0x14
+  get UNK long
+  get SIZE long
+  get OFFSET long
+
+  #string NAME p= "N%03i_%s" I NAME
+  log NAME OFFSET SIZE
+next I
